@@ -1343,7 +1343,7 @@ int multi_meter_config_reply13(uint8_t *buffer, struct ofp13_multipart_request *
 		buffer_ptr += sizeof(struct ofp13_multipart_reply);
 
 		meter_index = 0;
-		// Loop & format each meter stats reply
+		// Loop & format each meter config reply
 		while(meter_entry[meter_index] != NULL && meter_index < MAX_METER_13)
 		{
 			// Format reply with specified meter configuration
@@ -1376,6 +1376,8 @@ int multi_meter_config_reply13(uint8_t *buffer, struct ofp13_multipart_request *
 			
 			// update buffer pointer
 			buffer_ptr = ptr_buffer_band;
+			
+			meter_index++;
 		}
 		
 		return (buffer_ptr - buffer);	// return length

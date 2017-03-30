@@ -54,6 +54,7 @@ int charcount, charcount_last;
 bool masterselect;
 bool stackenabled;
 int portmap[4];
+uint8_t ports_total = 8;		// Adjust to dynamic (4 or 8) depending on stacking configuration
 int32_t ul_temp;
 uint8_t NativePortMatrix;
 uint32_t uid_buf[4];

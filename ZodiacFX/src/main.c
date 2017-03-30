@@ -183,19 +183,21 @@ int main (void)
 	
 	// Create port map
 	int v,p;
-	for (v = 0;v < MAX_VLANS;v++)
+	for (v = 0;v < ports_total;v++)
 	{
+		// Map OpenFlow VLANs
 		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)
 		{
-			for(p=0;p<4;p++)
+			for(p=0;p<ports_total;p++)
 			{
 				if (Zodiac_Config.vlan_list[v].portmap[p] == 1) Zodiac_Config.of_port[p] = 1; // Port is assigned to an OpenFlow VLAN
 			}
 		}
-
+		
+		// Map native VLANs
 		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 2)
 		{
-			for(p=0;p<4;p++)
+			for(p=0;p<ports_total;p++)
 			{
 				if (Zodiac_Config.vlan_list[v].portmap[p] == 1)
 				{

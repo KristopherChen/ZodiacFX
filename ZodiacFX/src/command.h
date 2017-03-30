@@ -52,7 +52,7 @@ struct virtlan {
 	char cVlanName[16];
 	int uVlanType;
 	int uTagged;
-	uint8_t portmap[4];		// If the port is assigned to this VLAN
+	uint8_t portmap[MAX_PORTS];		// If the port is assigned to this VLAN
 	int uActive;
 } PACK_STRUCT_STRUCT;
 PACK_STRUCT_END

@@ -51,6 +51,7 @@ struct ofp13_port_stats phys13_port_stats[4];
 uint8_t port_status[4];
 uint8_t last_port_status[4];
 extern uint8_t NativePortMatrix;
+extern uint8_t ports_total;
 extern bool masterselect;
 extern bool stackenabled;
 /** Buffer for ethernet packets */
@@ -754,7 +755,7 @@ void switch_init(void)
 		/* Create KSZ8795 VLANs */
 		switch_write(5,0);		// Disable 802.1q
 
-		for (int x=0;x<MAX_VLANS;x++)
+		for (int x=0;x<LOCAL_PORTS;x++)
 		{
 			if (Zodiac_Config.vlan_list[x].uActive == 1)
 			{

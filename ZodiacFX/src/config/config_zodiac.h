@@ -38,7 +38,9 @@
 #define MAX_FLOWS_10	128		// Maximum number of flows for OpenFlow 1.0
 #define MAX_FLOWS_13	512		// Maximum number of flows for OpenFlow 1.3
 
-#define MAX_VLANS	4	// Maximum number of VLANS, default is 1 per port (4)
+#define MAX_VLANS	4	// Maximum number of VLANS, default is 1 per port (4 or 8)
+#define MAX_PORTS	8	// Maximum possible ports (8)
+#define LOCAL_PORTS 4	// Number of local ports available (4)
 
 #define MAX_TABLES	10	// Maximum number of tables for OpenFlow 1.3 and higher
 

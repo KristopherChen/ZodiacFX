@@ -642,6 +642,12 @@ void update_port_status(void)
 	port_status[1] = (switch_read(46) & 32) >> 5;
 	port_status[2] = (switch_read(62) & 32) >> 5;
 	port_status[3] = (switch_read(78) & 32) >> 5;
+	
+	/* TODO: Update to support stacking
+		- Request 4 slave ports
+		- Update local port status
+	*/
+	
 	return;
 }
 

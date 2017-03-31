@@ -53,7 +53,7 @@ extern struct table_counter table_counters[MAX_TABLES];
 extern int OF_Version;
 extern bool rcv_freq;
 extern uint8_t NativePortMatrix;
-extern struct ofp10_port_stats phys10_port_stats[4];
+extern struct ofp10_port_stats phys10_port_stats[MAX_PORTS];
 extern uint8_t port_status[4];
 extern uint8_t ports_total;
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];

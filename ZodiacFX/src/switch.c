@@ -539,6 +539,12 @@ void update_port_stats(void)
 	}
 	stats_rr++;
 	if (stats_rr == 4) stats_rr = 0;
+		
+	/* TODO: Update to support stacking
+		- Request statistics for 1 slave port
+		- Update local port statistics
+	*/
+	
 }
 
 /*

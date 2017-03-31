@@ -24,6 +24,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Author: Paul Zanna <paul@northboundnetworks.com>
+ *		 & Kristopher Chen <Kristopher@northboundnetworks.com>
  *
  */
 
@@ -54,6 +55,7 @@ extern bool rcv_freq;
 extern uint8_t NativePortMatrix;
 extern struct ofp10_port_stats phys10_port_stats[4];
 extern uint8_t port_status[4];
+extern uint8_t ports_total;
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
 extern struct zodiac_config Zodiac_Config;
 extern struct ofp_switch_config Switch_config;
@@ -422,7 +424,7 @@ void features_reply10(uint32_t xid)
 {
 	uint64_t datapathid = 0;
 	int numofports = 0;
-	for(int n=0;n<4;n++)
+	for(int n=0;n<ports_total;n++)
 	{
 		if(Zodiac_Config.of_port[n]==1)numofports++;
 	}
@@ -450,7 +452,7 @@ void features_reply10(uint32_t xid)
 	memcpy(&buf, &features, sizeof(struct ofp10_switch_features));
 	update_port_status();		//update port status
 
-	for(l = 0; l< 4; l++)
+	for(l = 0; l< ports_total; l++)
 	{
 		if(Zodiac_Config.of_port[l] == 1)
 		{

@@ -54,6 +54,7 @@ extern int OF_Version;
 extern int totaltime;
 extern uint8_t last_port_status[4];
 extern uint8_t port_status[4];
+extern uint8_t ports_total;
 extern struct flows_counter flow_counters[MAX_FLOWS_13];
 extern struct table_counter table_counters[MAX_TABLES];
 extern struct meter_entry13 *meter_entry[MAX_METER_13];
@@ -140,7 +141,7 @@ void nnOF_timer(void)
 	} else if (timer_alt == 1){
 		update_port_status();
 		// If port status has changed send a port status message
-		for (int x=0;x<4;x++)
+		for (int x=0;x<ports_total;x++)
 		{
 			if (last_port_status[x] != port_status[x] && OF_Version == 1 && Zodiac_Config.of_port[x] == 1) port_status_message10(x);
 			if (last_port_status[x] != port_status[x] && OF_Version == 4 && Zodiac_Config.of_port[x] == 1) port_status_message13(x);

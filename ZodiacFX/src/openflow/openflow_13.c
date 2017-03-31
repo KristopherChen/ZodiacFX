@@ -24,6 +24,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Author: Paul Zanna <paul@northboundnetworks.com>
+ *		 & Kristopher Chen <Kristopher@northboundnetworks.com>
  *
  */
 
@@ -65,6 +66,7 @@ extern struct ofp_switch_config Switch_config;
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
 extern int multi_pos;
 extern uint8_t NativePortMatrix;
+extern uint8_t ports_total;
 extern bool reply_more_flag;
 extern uint32_t reply_more_xid;
 extern int meter_handler(uint32_t id, uint16_t bytes);
@@ -617,11 +619,6 @@ void of13_message(struct ofp_header *ofph, int size, int len)
 void features_reply13(uint32_t xid)
 {
 	uint64_t datapathid = 0;
-	int numofports = 0;
-	for(int n=0;n<4;n++)
-	{
-		if(Zodiac_Config.of_port[n]==1)numofports++;
-	}
 	struct ofp13_switch_features features;
 	uint8_t buf[256];
 	int bufsize = sizeof(struct ofp13_switch_features);

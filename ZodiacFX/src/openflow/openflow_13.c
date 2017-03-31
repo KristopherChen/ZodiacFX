@@ -848,7 +848,7 @@ int multi_aggregate_reply13(uint8_t *buffer, struct ofp13_multipart_request *msg
 int multi_portdesc_reply13(uint8_t *buffer, struct ofp13_multipart_request *msg)
 {
 	int numofports = 0;
-	for(int n=0;n<4;n++)
+	for(int n=0;n<ports_total;n++)
 	{
 		if(Zodiac_Config.of_port[n]==1) numofports++;
 	}
@@ -868,7 +868,7 @@ int multi_portdesc_reply13(uint8_t *buffer, struct ofp13_multipart_request *msg)
 	uint8_t mac[] = {0x00,0x00,0x00,0x00,0x00,0x00};
 	update_port_status();		//update port status
 
-	for(int l = 0; l< 4; l++)
+	for(int l = 0; l< ports_total; l++)
 	{
 		if(Zodiac_Config.of_port[l] == 1)
 		{

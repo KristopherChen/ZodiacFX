@@ -182,7 +182,7 @@ int main (void)
 	
 	// Create port map
 	int v,p;
-	for (v = 0;v < ports_total;v++)
+	for (v = 0;v < MAX_VLANS;v++)
 	{
 		// Map OpenFlow VLANs
 		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)

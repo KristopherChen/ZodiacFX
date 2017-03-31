@@ -755,7 +755,7 @@ void switch_init(void)
 		/* Create KSZ8795 VLANs */
 		switch_write(5,0);		// Disable 802.1q
 
-		for (int x=0;x<LOCAL_PORTS;x++)
+		for (int x=0;x<MAX_VLANS;x++)
 		{
 			if (Zodiac_Config.vlan_list[x].uActive == 1)
 			{

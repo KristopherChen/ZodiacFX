@@ -158,7 +158,7 @@ int main (void)
 	switch_init();
 
 	/* Initialize lwIP. */
-	lwip_init();
+	//lwip_init();
 
 	/* Add data to netif */
 	netif_add(&gs_net_if, &x_ip_addr, &x_net_mask, &x_gateway, NULL, ethernetif_init, ethernet_input);
@@ -172,43 +172,43 @@ int main (void)
 	sys_init_timing();
 	
 	/* Initialize HTTP server. */
-	http_init();
+	//http_init();
 	
 	// Create port map
-	int v,p;
-	for (v = 0;v < MAX_VLANS;v++)
-	{
-		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)
-		{
-			for(p=0;p<4;p++)
-			{
-				if (Zodiac_Config.vlan_list[v].portmap[p] == 1) Zodiac_Config.of_port[p] = 1; // Port is assigned to an OpenFlow VLAN
-			}
-		}
-
-		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 2)
-		{
-			for(p=0;p<4;p++)
-			{
-				if (Zodiac_Config.vlan_list[v].portmap[p] == 1)
-				{
-					Zodiac_Config.of_port[p] = 0; // Port is assigned to a Native VLAN
-					NativePortMatrix += 1<<p;
-				}
-			}
-		}
-	}
+	//int v,p;
+	//for (v = 0;v < MAX_VLANS;v++)
+	//{
+		//if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)
+		//{
+			//for(p=0;p<4;p++)
+			//{
+				//if (Zodiac_Config.vlan_list[v].portmap[p] == 1) Zodiac_Config.of_port[p] = 1; // Port is assigned to an OpenFlow VLAN
+			//}
+		//}
+//
+		//if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 2)
+		//{
+			//for(p=0;p<4;p++)
+			//{
+				//if (Zodiac_Config.vlan_list[v].portmap[p] == 1)
+				//{
+					//Zodiac_Config.of_port[p] = 0; // Port is assigned to a Native VLAN
+					//NativePortMatrix += 1<<p;
+				//}
+			//}
+		//}
+	//}
 
 	while(1)
 	{
-		task_switch(&gs_net_if);
+		//task_switch(&gs_net_if);
 		task_command(cCommand, cCommand_last);
 		// Only run the following tasks if set to Master
 		if(masterselect == false)
 		{
 		//	task_command(cCommand, cCommand_last);
-			sys_check_timeouts();
-			task_openflow();	
+			//sys_check_timeouts();
+			//task_openflow();	
 		} 
 	}
 }

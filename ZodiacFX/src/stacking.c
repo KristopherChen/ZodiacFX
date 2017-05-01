@@ -456,7 +456,7 @@ void SPI_Handler(void)
 	}
 		
 	if(pending_spi_command == SPI_RECEIVE)
-	{
+	{	
 		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
 		// Check if this is an end marker
 		if (data == 0xde)
@@ -467,7 +467,7 @@ void SPI_Handler(void)
 			if (spi_receive_port == 255)
 			{
 				gmac_write(&shared_buffer, spi_receive_count, OFPP13_FLOOD, 0);
-			} else{	
+				} else{
 				gmac_write(&shared_buffer, spi_receive_count, spi_receive_port-4, 0);
 			}
 			pending_spi_command = SPI_SEND_CLEAR;
@@ -476,8 +476,8 @@ void SPI_Handler(void)
 			spi_receive_count =0;
 			return;
 		}
-				
-		if (spi_receive_port == 0) 
+		
+		if (spi_receive_port == 0)
 		{
 			spi_receive_port = data;
 			return;
@@ -486,5 +486,4 @@ void SPI_Handler(void)
 		shared_buffer[spi_receive_count] = data;
 		spi_receive_count++;
 	}
-			
 }

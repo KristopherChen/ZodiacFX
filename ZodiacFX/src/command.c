@@ -44,6 +44,7 @@
 #include "timers.h"
 #include "lwip/ip_addr.h"
 #include "lwip/tcp.h"
+#include "stacking.h"
 
 #define RSTC_KEY  0xA5000000
 
@@ -77,6 +78,7 @@ extern int32_t ul_temp;
 extern int OF_Version;
 extern uint32_t uid_buf[4];
 extern bool restart_required_outer;
+extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
 
 // Local Variables
 bool showintro = true;
@@ -93,6 +95,9 @@ void command_openflow(char *command, char *param1, char *param2, char *param3);
 void command_debug(char *command, char *param1, char *param2, char *param3);
 void printintro(void);
 void printhelp(void);
+void spi_test(void);
+void enable_stacking(void);
+
 
 
 /*
@@ -487,6 +492,12 @@ void command_root(char *command, char *param1, char *param2, char *param3)
 		}
 		printf("\n");
 		
+		return;
+	}
+
+	if (strcmp(command, "spi")==0)
+	{
+		spi_test();
 		return;
 	}
 
@@ -1745,5 +1756,49 @@ void printhelp(void)
 	printf(" trace\r\n");
 	printf(" exit\r\n");
 	printf("\r\n");
+	return;
+}
+
+void spi_test(void)
+{
+	printf("starting SPI test\n");
+	enable_stacking();
+	
+	uint16_t pattern_index = 0;
+	uint8_t	pattern_data = 0;
+	uint16_t rx_data;
+	
+	// Generate 1000-byte walking pattern
+	while(pattern_index < 2000)
+	{
+		shared_buffer[pattern_index] = pattern_data;
+		pattern_index++;
+		pattern_data++;
+	}
+	
+	// Send data
+	for (uint16_t i = 0; i < 2000; i++)
+	{
+		spi_write(SPI_MASTER_BASE, shared_buffer[i], 0, 0);
+		while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		//spi_read(SPI_MASTER_BASE, &rx_data, NULL);
+	}
+	
+	return;
+}
+
+void enable_stacking(void)
+{
+	if(masterselect == false && !ioport_get_pin_level(SPI_IRQ1) && stackenabled == false)
+	{
+		printf("stacking enabled\n");
+		MasterReady();	// Let the slave know the master is ready
+		stackenabled = true;
+	}
+	else
+	{
+		printf("stacking not enabled\n");
+	}
+	
 	return;
 }

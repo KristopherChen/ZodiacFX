@@ -370,11 +370,15 @@ void MasterStackRcv(void)
 void SPI_Handler(void)
 {
 	static uint16_t data;
+	static uint16_t rx_index = 0;
 	static uint32_t receive_timeout = 0;	// Timeout for SPI data receive (MASTER->SLAVE)
 	uint8_t uc_pcs;
+	static uint16_t error_ct = 0;
 	
 	if (slave_ready == false)		// Is this the first data we have received?
 	{
+		TRACE("____________________ RECEIVED MASTER READY SIGNAL ____________________");
+		
 		if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
 		{
 			spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
@@ -387,103 +391,130 @@ void SPI_Handler(void)
 		}
 	}
 	
-	if(pending_spi_command == SPI_SEND_STATS)	// We send the master our port stats
+	if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
 	{
-		if (spi_slave_send_count <= 0)
+		spi_read(SPI_SLAVE_BASE, &data, NULL);
+		shared_buffer[rx_index] = data;
+		rx_index++;
+		if (rx_index >= 2000)
 		{
-			if (spi_dummy_bytes < 2)
+			uint8_t pattern_data = 0;
+			for (uint16_t i = 0; i < 2000; i++)
 			{
-				spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
-				spi_dummy_bytes++;
-				return;
-			}			
-			pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
-			ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
-			spi_dummy_bytes = 0;
-		} else {
-			spi_write(SPI_SLAVE_BASE, spi_stats_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
-			spi_slave_send_count--;
-		}		
-		return;	
-	}
-
-	if(pending_spi_command == SPI_SEND_PKT)	// Send slave packet to master
-	{
-		if (spi_slave_send_count <= 0)
-		{
-			// Flush out last two bytes
-			if (spi_dummy_bytes < 2)
-			{
-				spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
-				spi_dummy_bytes++;
-				return;
+				if(shared_buffer[i] != pattern_data)
+				{
+					printf("expected: %d, received %d\n", pattern_data, shared_buffer[i]);
+					error_ct++;
+				}
+				
+				pattern_data++;
 			}
-			pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
-			ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
-			spi_dummy_bytes = 0;
-		} else {
-			while(spi_slave_send_count > 0)
-			{
-				spi_write(SPI_SLAVE_BASE, shared_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
-				spi_slave_send_count--;
-				// Wait for master to send the next byte
-				while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
-			}
+			rx_index = 0;
+			error_ct = 0;
+			printf("error count: %d\n", error_ct);
 		}
-		return;
-	}
-
-	if(pending_spi_command == SPI_SEND_CLEAR)
-	{
-		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		if (data == 0xcd) pending_spi_command = SPI_RCV_PREAMBLE;
-		// START PROCESSING
 		return;
 	}
 	
-	if(pending_spi_command == SPI_RCV_PREAMBLE)
-	{
-		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		if (data == 0xcd) 
-		{
-			pending_spi_command = SPI_RECEIVE;
-			receive_timeout = sys_get_ms();
-			memset(&shared_buffer,0,sizeof(shared_buffer));
-		} else {
-			pending_spi_command = SPI_SEND_CLEAR;
-		}
-		return;
-	}
-		
-	if(pending_spi_command == SPI_RECEIVE)
-	{	
-		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		// Check if this is an end marker
-		if (data == 0xde)
-		{
-			end_receive = true;
-		} else if (data == 0xef && end_receive == true)
-		{
-			if (spi_receive_port == 255)
-			{
-				gmac_write(&shared_buffer, spi_receive_count, OFPP13_FLOOD, 0);
-				} else{
-				gmac_write(&shared_buffer, spi_receive_count, spi_receive_port-4, 0);
-			}
-			pending_spi_command = SPI_SEND_CLEAR;
-			spi_receive_port = 0;
-			end_receive = false;
-			spi_receive_count =0;
-			return;
-		}
-		
-		if (spi_receive_port == 0)
-		{
-			spi_receive_port = data;
-			return;
-		}
-		
-		shared_buffer[spi_receive_count] = data;
-		spi_receive_count++;
-	}
+	//if(pending_spi_command == SPI_SEND_STATS)	// We send the master our port stats
+	//{
+		//if (spi_slave_send_count <= 0)
+		//{
+			//if (spi_dummy_bytes < 2)
+			//{
+				//spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
+				//spi_dummy_bytes++;
+				//return;
+			//}			
+			//pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
+			//ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
+			//spi_dummy_bytes = 0;
+		//} else {
+			//spi_write(SPI_SLAVE_BASE, spi_stats_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
+			//spi_slave_send_count--;
+		//}		
+		//return;	
+	//}
+//
+	//if(pending_spi_command == SPI_SEND_PKT)	// Send slave packet to master
+	//{
+		//if (spi_slave_send_count <= 0)
+		//{
+			//// Flush out last two bytes
+			//if (spi_dummy_bytes < 2)
+			//{
+				//spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
+				//spi_dummy_bytes++;
+				//return;
+			//}
+			//pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
+			//ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
+			//spi_dummy_bytes = 0;
+		//} else {
+			//while(spi_slave_send_count > 0)
+			//{
+				//spi_write(SPI_SLAVE_BASE, shared_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
+				//spi_slave_send_count--;
+				//// Wait for master to send the next byte
+				//while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
+			//}
+		//}
+		//return;
+	//}
+//
+	//if(pending_spi_command == SPI_SEND_CLEAR)
+	//{
+		//spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+		//if (data == 0xcd) pending_spi_command = SPI_RCV_PREAMBLE;
+		//// START PROCESSING
+		//return;
+	//}
+	//
+	//if(pending_spi_command == SPI_RCV_PREAMBLE)
+	//{
+		//spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+		//if (data == 0xcd) 
+		//{
+			//pending_spi_command = SPI_RECEIVE;
+			//receive_timeout = sys_get_ms();
+			//memset(&shared_buffer,0,sizeof(shared_buffer));
+		//} else {
+			//pending_spi_command = SPI_SEND_CLEAR;
+		//}
+		//return;
+	//}
+		//
+	//if(pending_spi_command == SPI_RECEIVE)
+	//{	
+		//spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+		//// Check if this is an end marker
+		//if (data == 0xde)
+		//{
+			//end_receive = true;
+		//} else if (data == 0xef && end_receive == true)
+		//{
+			//if (spi_receive_port == 255)
+			//{
+				//gmac_write(&shared_buffer, spi_receive_count, OFPP13_FLOOD, 0);
+				//} else{
+				//gmac_write(&shared_buffer, spi_receive_count, spi_receive_port-4, 0);
+			//}
+			//pending_spi_command = SPI_SEND_CLEAR;
+			//spi_receive_port = 0;
+			//end_receive = false;
+			//spi_receive_count =0;
+			//return;
+		//}
+		//
+		//if (spi_receive_port == 0)
+		//{
+			//spi_receive_port = data;
+			//return;
+		//}
+		//
+		//shared_buffer[spi_receive_count] = data;
+		//spi_receive_count++;
+	//}
+	
+	return;
 }

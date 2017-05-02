@@ -369,6 +369,7 @@ void MasterStackRcv(void)
 */
 void SPI_Handler(void)
 {
+	printf("spi handler triggered\n");
 	static uint16_t data;
 	static uint16_t rx_index = 0;
 	static uint32_t receive_timeout = 0;	// Timeout for SPI data receive (MASTER->SLAVE)
@@ -377,10 +378,11 @@ void SPI_Handler(void)
 	
 	if (slave_ready == false)		// Is this the first data we have received?
 	{
-		TRACE("____________________ RECEIVED MASTER READY SIGNAL ____________________");
+		//printf("RECEIVED MASTER READY SIGNAL\n");
 		
 		if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
 		{
+			//printf("%d\n", data);
 			spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
 			if (data == 0xaa) 
 			{
@@ -391,30 +393,34 @@ void SPI_Handler(void)
 		}
 	}
 	
-	if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
-	{
-		spi_read(SPI_SLAVE_BASE, &data, NULL);
-		shared_buffer[rx_index] = data;
-		rx_index++;
-		if (rx_index >= 2000)
+	//while(1)
+	//{
+		if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
 		{
-			uint8_t pattern_data = 0;
-			for (uint16_t i = 0; i < 2000; i++)
+			spi_read(SPI_SLAVE_BASE, &data, NULL);
+			shared_buffer[rx_index] = data;
+			rx_index++;
+			if (rx_index >= 2000)
 			{
-				if(shared_buffer[i] != pattern_data)
+				uint8_t pattern_data = 0;
+				for (uint16_t i = 0; i < 2000; i++)
 				{
-					printf("expected: %d, received %d\n", pattern_data, shared_buffer[i]);
-					error_ct++;
-				}
+					if(shared_buffer[i] != pattern_data)
+					{
+						//printf("ex %d rx %d\n", pattern_data, shared_buffer[i]);
+						error_ct++;
+					}
 				
-				pattern_data++;
+					pattern_data++;
+				}
+				rx_index = 0;
+				error_ct = 0;
+				printf("error count: %d\n", error_ct);
 			}
-			rx_index = 0;
-			error_ct = 0;
-			printf("error count: %d\n", error_ct);
+			return;
 		}
-		return;
-	}
+	//}
+
 	
 	//if(pending_spi_command == SPI_SEND_STATS)	// We send the master our port stats
 	//{

@@ -23,7 +23,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Author: Paul Zanna <paul@northboundnetworks.com>
+ * Authors: Paul Zanna <paul@northboundnetworks.com>
+ *		  & Kristopher Chen <Kristopher@northboundnetworks.com>
  *
  */ 
 
@@ -413,9 +414,12 @@ void MasterStackRcv(void)
 			return;
 		}
 		TRACE("stacking.c: received packet (%d bytes)", spi_packet->ul_rcv_size);
+		// Copy packet into Ethernet buffer
 		memcpy(gs_uc_eth_buffer, &spi_packet->pkt_buffer, GMAC_FRAME_LENTGH_MAX);
+		// Update port stats
 		phys10_port_stats[spi_packet->tag-1].rx_packets++;
 		phys13_port_stats[spi_packet->tag-1].rx_packets++;
+		// Send packet to OpenFlow table lookup function for processing
 		nnOF_tablelookup(gs_uc_eth_buffer, &spi_packet->ul_rcv_size, spi_packet->tag);
 		return;
 	}

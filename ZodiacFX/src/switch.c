@@ -578,6 +578,7 @@ void task_switch(struct netif *netif)
 			}
 		} else
 		{
+			// Forward packet to MASTER if SLAVE is in the clear state
 			if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
 			{
 				// Prepare packet to send from SLAVE to MASTER

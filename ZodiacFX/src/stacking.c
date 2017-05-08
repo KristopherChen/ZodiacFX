@@ -37,7 +37,7 @@
 #include "timers.h"
 
 /* SPI clock setting (Hz). */
-static uint32_t gs_ul_spi_clock = 2000000;
+static uint32_t gs_ul_spi_clock = 5000000;
 
 /* Chip select. */
 #define SPI_CHIP_SEL 0
@@ -47,9 +47,9 @@ static uint32_t gs_ul_spi_clock = 2000000;
 /* Clock phase. */
 #define SPI_CLK_PHASE 0
 /* Delay before SPCK. */
-#define SPI_DLYBS 0x40
+#define SPI_DLYBS 0x30
 /* Delay between consecutive transfers. */
-#define SPI_DLYBCT 0x10//0x10
+#define SPI_DLYBCT 0x00//0x10
 
 // Global variables
 extern uint8_t last_port_status[8];

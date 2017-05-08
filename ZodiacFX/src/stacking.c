@@ -187,17 +187,17 @@ void Slave_timer(void)
 	} else if (timer_alt == 2)
 	{
 		// Send SLAVE port stats if SLAVE is in the clear state
-		if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
-		{
-			spi_p_stats.premable = SPI_STATS_PREAMBLE;
-			spi_p_stats.spi_size = sizeof(struct spi_port_stats);
-			memcpy(&spi_stats_buffer, &spi_p_stats, sizeof(struct spi_port_stats));
-			ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
-			pending_spi_command = SPI_SEND_STATS;	// We are waiting to send port stats
-			spi_slave_send_size = sizeof(struct spi_port_stats);
-			spi_slave_send_count = spi_slave_send_size;
-			timer_alt = 0;
-		}
+		//if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
+		//{
+			//spi_p_stats.premable = SPI_STATS_PREAMBLE;
+			//spi_p_stats.spi_size = sizeof(struct spi_port_stats);
+			//memcpy(&spi_stats_buffer, &spi_p_stats, sizeof(struct spi_port_stats));
+			//ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
+			//pending_spi_command = SPI_SEND_STATS;	// We are waiting to send port stats
+			//spi_slave_send_size = sizeof(struct spi_port_stats);
+			//spi_slave_send_count = spi_slave_send_size;
+			//timer_alt = 0;
+		//}
 		return;
 	}
 }

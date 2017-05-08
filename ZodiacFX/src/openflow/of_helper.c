@@ -155,8 +155,8 @@ void nnOF_timer(void)
 		timer_alt = 2;
 	} else if (timer_alt == 2){
 			// ***** Generate SPI MASTER -> SLAVE test pattern *****
-				test_pattern();
-				MasterStackSend(&shared_buffer, 1400, 8);
+				//test_pattern();
+				//MasterStackSend(&shared_buffer, 1400, 8);
 			// ***** END *****
 		flow_timeouts();
 		timer_alt = 0;

@@ -186,15 +186,18 @@ void Slave_timer(void)
 		return;
 	} else if (timer_alt == 2)
 	{
-		if(slave_ready == false || pending_spi_command != SPI_SEND_CLEAR) return;		// Wait until the master acknowledges us before sending anything
-		spi_p_stats.premable = SPI_STATS_PREAMBLE;
-		spi_p_stats.spi_size = sizeof(struct spi_port_stats);
-		memcpy(&spi_stats_buffer, &spi_p_stats, sizeof(struct spi_port_stats));
-		ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
-		pending_spi_command = SPI_SEND_STATS;	// We are waiting to send port stats
-		spi_slave_send_size = sizeof(struct spi_port_stats);
-		spi_slave_send_count = spi_slave_send_size;
-		timer_alt = 0;
+		// Send SLAVE port stats if SLAVE is in the clear state
+		if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
+		{
+			spi_p_stats.premable = SPI_STATS_PREAMBLE;
+			spi_p_stats.spi_size = sizeof(struct spi_port_stats);
+			memcpy(&spi_stats_buffer, &spi_p_stats, sizeof(struct spi_port_stats));
+			ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
+			pending_spi_command = SPI_SEND_STATS;	// We are waiting to send port stats
+			spi_slave_send_size = sizeof(struct spi_port_stats);
+			spi_slave_send_count = spi_slave_send_size;
+			timer_alt = 0;
+		}
 		return;
 	}
 }
@@ -586,56 +589,76 @@ void SPI_Handler(void)
 
 	if(pending_spi_command == SPI_SEND_CLEAR)
 	{
-		// ***** Modified MASTER -> SLAVE receiver *****
-		uint16_t spi_count = 0;
-		uint16_t spi_read_size = 1600;
-		
-		// Discard dummy byte (attempts to prevent unwanted bytes before first proper read)
-		spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
 		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
-		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		
-		// Testing - additional preamble read detection (i.e. detect 0xBC 0xBC SPI header preamble before main loop)
-		//spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
-		//spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
-		//spi_count++;
-		//spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
-		//spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
-		//spi_count++;
-		
-		while(spi_count < spi_read_size)
+		if (data == 0xBC)
 		{
-			spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
-			while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
-			spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
-			// (processing may cause timing problems - none found during testing)
-			if(spi_read_size == 1600)
+			pending_spi_command = SPI_RCV_PREAMBLE;
+		}
+		return;
+	}
+
+	if(pending_spi_command == SPI_RCV_PREAMBLE)
+	{
+		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+		if (data == 0xBC)
+		{
+			pending_spi_command = SPI_RECEIVE;
+			//memset(&shared_buffer,0,sizeof(shared_buffer));	// *****
+			// Write preamble to SPI packet header
+			shared_buffer[0] = 0xBC;
+			shared_buffer[1] = 0xBC;
+		}
+		else
+		{
+			pending_spi_command = SPI_SEND_CLEAR;
+		}
+		return;
+	}
+	
+	if(pending_spi_command == SPI_RECEIVE)
+	{
+		// ***** Modified MASTER -> SLAVE receiver *****
+		static uint16_t spi_count = 2;
+		static uint16_t spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+		
+		// Read next byte
+		spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
+		while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
+		spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
+
+		if(spi_read_size == GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE && spi_count == 3)
+		{
+			spi_read_size = shared_buffer[2] + (shared_buffer[3]*256);
+			if(spi_read_size > GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE)
 			{
-				if(spi_count == 3)
-				{
-					spi_read_size = shared_buffer[2] + (shared_buffer[3]*256);
-					if(spi_read_size > 1600)
-					{
-						spi_read_size = 1600;
-					}
-				}
+				// ERROR: over-sized packet data
+				// Clean up and return
+				pending_spi_command = SPI_SEND_CLEAR;
+				spi_count = 2;
+				spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+				return;
 			}
+		}
+		
+		// Check if more bytes need to be read
+		if(spi_count < (spi_read_size-1))
+		{
+			// Wait for next interrupt
 			spi_count++;
+			return;
 		}
 		
 		uint32_t spi_crc_rcv = 0;
 		spi_packet = &shared_buffer;
-		
-		// Check that the preamble is as expected
-		if (!(shared_buffer[0] == 0xBC && shared_buffer[1] == 0xBC))
-		{
-			return;
-		}
-		
+				
 		// Check against maximum packet size
 		if (spi_packet->ul_rcv_size > GMAC_FRAME_LENTGH_MAX)
 		{
+			// ERROR: payload data too large
+			// Clean up and return
+			pending_spi_command = SPI_SEND_CLEAR;
+			spi_count = 2;
+			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			return;
 		}
 		
@@ -648,6 +671,11 @@ void SPI_Handler(void)
 		// Check calculated CRC against received CRC
 		if (spi_packet->spi_crc != spi_crc_rcv)
 		{
+			// ERROR: corrupt packet
+			// Clean up and return
+			pending_spi_command = SPI_SEND_CLEAR;
+			spi_count = 2;
+			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			return;
 		}
 		
@@ -659,8 +687,14 @@ void SPI_Handler(void)
 		{
 			gmac_write(&spi_packet->pkt_buffer, spi_packet->ul_rcv_size, spi_packet->tag-4, 0);
 		}
+		// Packet receive complete
+		// Clean up and return
+		pending_spi_command = SPI_SEND_CLEAR;
+		spi_count = 2;
+		spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 		return;
 
 		// ***** END *****
 	}
+
 }

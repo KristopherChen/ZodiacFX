@@ -92,7 +92,9 @@ void stacking_init(bool master)
 	{
 		spi_slave_initialize();
 		ioport_set_pin_dir(SPI_IRQ1, IOPORT_DIR_OUTPUT);
-		} else {
+	}
+	else
+	{
 		spi_master_initialize();
 		ioport_set_pin_dir(SPI_IRQ1, IOPORT_DIR_INPUT);
 	}
@@ -626,11 +628,11 @@ void SPI_Handler(void)
 		
 		if (spi_packet->tag == 255)
 		{
-			gmac_write(&spi_packet->pkt_buffer, spi_packet->ul_rcv_size, OFPP13_FLOOD, 0);
+			//gmac_write(&spi_packet->pkt_buffer, spi_packet->ul_rcv_size, OFPP13_FLOOD, 0);
 		}
 		else if (spi_packet->tag <= 8)
 		{
-			gmac_write(&spi_packet->pkt_buffer, spi_packet->ul_rcv_size, spi_packet->tag-4, 0);
+			//gmac_write(&spi_packet->pkt_buffer, spi_packet->ul_rcv_size, spi_packet->tag-4, 0);
 		}
 		// Packet receive complete
 		// Clean up and return

@@ -48,6 +48,8 @@
 #include "openflow/openflow.h"
 #include "ksz8795clx/ethernet_phy.h"
 
+#include "stacking.h"
+
 // Global variables
 struct netif gs_net_if;
 struct zodiac_config Zodiac_Config;
@@ -58,6 +60,12 @@ int portmap[4];
 int32_t ul_temp;
 uint8_t NativePortMatrix;
 uint32_t uid_buf[4];
+
+// ***** Support for SPI test pattern *****
+uint8_t test_pattern(void);
+extern void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port);
+extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
+// ***** END *****
 
 /** Reference voltage for AFEC,in mv. */
 #define VOLT_REF        (3300)
@@ -155,10 +163,10 @@ int main (void)
 	IP4_ADDR(&x_gateway, Zodiac_Config.gateway_address[0], Zodiac_Config.gateway_address[1],Zodiac_Config.gateway_address[2], Zodiac_Config.gateway_address[3]);
 
 	/* Initialize KSZ8795. */
-	switch_init();
+	//switch_init();
 
 	/* Initialize lwIP. */
-	lwip_init();
+	//lwip_init();
 
 	/* Add data to netif */
 	netif_add(&gs_net_if, &x_ip_addr, &x_net_mask, &x_gateway, NULL, ethernetif_init, ethernet_input);
@@ -172,43 +180,79 @@ int main (void)
 	sys_init_timing();
 	
 	/* Initialize HTTP server. */
-	http_init();
+	//http_init();
 	
 	// Create port map
-	int v,p;
-	for (v = 0;v < MAX_VLANS;v++)
+	//int v,p;
+	//for (v = 0;v < MAX_VLANS;v++)
+	//{
+		//if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)
+		//{
+			//for(p=0;p<4;p++)
+			//{
+				//if (Zodiac_Config.vlan_list[v].portmap[p] == 1) Zodiac_Config.of_port[p] = 1; // Port is assigned to an OpenFlow VLAN
+			//}
+		//}
+//
+		//if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 2)
+		//{
+			//for(p=0;p<4;p++)
+			//{
+				//if (Zodiac_Config.vlan_list[v].portmap[p] == 1)
+				//{
+					//Zodiac_Config.of_port[p] = 0; // Port is assigned to a Native VLAN
+					//NativePortMatrix += 1<<p;
+				//}
+			//}
+		//}
+	//}
+	
+	for(uint32_t ct=0; ct<1000; ct++);
+	if(masterselect == false && !ioport_get_pin_level(SPI_IRQ1) && stackenabled == false)
 	{
-		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 1)
-		{
-			for(p=0;p<4;p++)
-			{
-				if (Zodiac_Config.vlan_list[v].portmap[p] == 1) Zodiac_Config.of_port[p] = 1; // Port is assigned to an OpenFlow VLAN
-			}
-		}
-
-		if (Zodiac_Config.vlan_list[v].uActive == 1 && Zodiac_Config.vlan_list[v].uVlanType == 2)
-		{
-			for(p=0;p<4;p++)
-			{
-				if (Zodiac_Config.vlan_list[v].portmap[p] == 1)
-				{
-					Zodiac_Config.of_port[p] = 0; // Port is assigned to a Native VLAN
-					NativePortMatrix += 1<<p;
-				}
-			}
-		}
+		MasterReady();	// Let the slave know the master is ready
+		stackenabled = true;
 	}
 
 	while(1)
 	{
-		task_switch(&gs_net_if);
-		//task_command(cCommand, cCommand_last);
-		// Only run the following tasks if set to Master
+		// Check if the slave device has a packet to send us
+		//if(masterselect == false && ioport_get_pin_level(SPI_IRQ1) && stackenabled == true)
+		//{
+			//MasterStackRcv();
+		//}
+		
+		// Check if the slave device is connected and enable stacking
+		
 		if(masterselect == false)
 		{
-			task_command(cCommand, cCommand_last);
-			sys_check_timeouts();
-			task_openflow();	
-		} 
+			// ***** Generate SPI MASTER -> SLAVE test pattern *****
+			for(uint32_t ct=0; ct<1000000; ct++);
+			test_pattern();
+			MasterStackSend(&shared_buffer, 1400, 8);
+			// ***** END *****
+		}
+		
+		//task_switch(&gs_net_if);
+		//task_command(cCommand, cCommand_last);
+		// Only run the following tasks if set to Master
+		//if(masterselect == false)
+		//{
+			//task_command(cCommand, cCommand_last);
+			//sys_check_timeouts();
+			//task_openflow();	
+		//} 
 	}
 }
+
+// ***** Generate SPI test pattern *****
+uint8_t test_pattern(void)
+{
+	uint8_t pattern = 0;
+	for(uint16_t i=0;i<1400;i++)
+	{
+		shared_buffer[i] = pattern++;
+	}
+	return;
+}
+// ***** END *****

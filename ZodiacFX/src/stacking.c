@@ -77,6 +77,10 @@ bool end_check;
 uint8_t spi_receive_port = 0;
 uint16_t spi_receive_count;
 
+uint32_t	slave_rx_start_time = 0;
+uint64_t	slave_rx_count = 0;
+uint32_t	slave_rx_error_count = 0;
+
 void spi_master_initialize(void);
 void spi_slave_initialize(void);
 void spi_port_stats(void);
@@ -149,6 +153,7 @@ void spi_master_initialize(void)
 	spi_set_clock_phase(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_CLK_PHASE);
 
 	spi_enable(SPI_MASTER_BASE);
+	
 }
 
 void Slave_timer(void)
@@ -557,6 +562,7 @@ void SPI_Handler(void)
 		}
 		else
 		{
+			slave_rx_error_count++;
 			pending_spi_command = SPI_SEND_CLEAR;
 		}
 		return;
@@ -564,6 +570,10 @@ void SPI_Handler(void)
 	
 	if(pending_spi_command == SPI_RECEIVE)
 	{
+		if(slave_rx_start_time == 0)
+		{
+			slave_rx_start_time = sys_get_ms();
+		}
 		// ***** Modified MASTER -> SLAVE receiver *****
 		static uint16_t spi_count = 2;
 		static uint16_t spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
@@ -583,6 +593,7 @@ void SPI_Handler(void)
 				pending_spi_command = SPI_SEND_CLEAR;
 				spi_count = 2;
 				spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+				slave_rx_error_count++;
 				return;
 			}
 		}
@@ -606,6 +617,7 @@ void SPI_Handler(void)
 			pending_spi_command = SPI_SEND_CLEAR;
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+			slave_rx_error_count++;
 			return;
 		}
 		
@@ -623,6 +635,7 @@ void SPI_Handler(void)
 			pending_spi_command = SPI_SEND_CLEAR;
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+			slave_rx_error_count++;
 			return;
 		}
 		
@@ -636,6 +649,7 @@ void SPI_Handler(void)
 		}
 		// Packet receive complete
 		// Clean up and return
+		slave_rx_count += spi_packet->ul_rcv_size;
 		pending_spi_command = SPI_SEND_CLEAR;
 		spi_count = 2;
 		spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
@@ -644,4 +658,12 @@ void SPI_Handler(void)
 		// ***** END *****
 	}
 
+}
+
+void print_spi_config(void)
+{
+	uint8_t dlybs = SPI_DLYBS;
+	uint8_t dlybct = SPI_DLYBCT;
+	printf("MASTER configuration:\nspi clock=%d\nSPI_DLYBS=%x\nSPI_DLYBCT=%x\n",gs_ul_spi_clock,dlybs,dlybct);
+	return;
 }

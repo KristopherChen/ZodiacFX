@@ -65,6 +65,9 @@ uint32_t uid_buf[4];
 uint8_t test_pattern(void);
 extern void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port);
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
+extern uint32_t slave_rx_start_time;
+extern uint64_t	slave_rx_count;
+extern uint32_t	slave_rx_error_count;
 // ***** END *****
 
 /** Reference voltage for AFEC,in mv. */
@@ -207,12 +210,14 @@ int main (void)
 		//}
 	//}
 	
-	for(uint32_t ct=0; ct<1000; ct++);
+	for(uint32_t ct=0; ct<10000; ct++);
 	if(masterselect == false && !ioport_get_pin_level(SPI_IRQ1) && stackenabled == false)
 	{
+		print_spi_config();
 		MasterReady();	// Let the slave know the master is ready
 		stackenabled = true;
 	}
+	
 
 	while(1)
 	{
@@ -227,10 +232,27 @@ int main (void)
 		if(masterselect == false)
 		{
 			// ***** Generate SPI MASTER -> SLAVE test pattern *****
-			for(uint32_t ct=0; ct<1000000; ct++);
+			for(uint32_t ct=0; ct<10000000; ct++);
 			test_pattern();
 			MasterStackSend(&shared_buffer, 1400, 8);
 			// ***** END *****
+		}
+		
+		if(slave_rx_start_time != 0)
+		{
+			// 5 seconds == 5000 ms
+			if(sys_get_ms() - slave_rx_start_time > 5000)
+			{
+				printf("\n__5s report__\n");
+				printf("rx  bytes:\t%llu\n", slave_rx_count);
+				printf("rx errors:\t%d\n", slave_rx_error_count);
+				uint32_t calc_speed = ((slave_rx_count*8)/1000)/5;
+				printf("rx  speed:\t%d Kbps\n", calc_speed);
+				
+				slave_rx_start_time = 0;
+				slave_rx_count = 0;
+				slave_rx_error_count = 0;
+			}
 		}
 		
 		//task_switch(&gs_net_if);

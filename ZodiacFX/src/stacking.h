@@ -70,5 +70,6 @@ void MasterReady(void);
 void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port);
 void MasterStackRcv(void);
 void Slave_timer(void);
+void print_spi_config(void);
 
 #endif /* STACKING_H_ */

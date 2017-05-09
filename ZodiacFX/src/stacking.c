@@ -160,30 +160,6 @@ void Slave_timer(void)
 	{
 		spi_port_status();
 		timer_alt = 2;
-			// ***** Generate SLAVE -> MASTER test pattern *****
-				//if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
-				//{
-					//// PREPARE TEST PACKET from SLAVE to MASTER
-					//spi_packet = &shared_buffer;
-					//spi_packet->premable = SPI_PACKET_PREAMBLE;
-					//spi_packet->ul_rcv_size = 1400;
-					//spi_packet->spi_crc = 0;
-					//uint8_t*ind_ptr = &spi_packet->pkt_buffer;
-					//uint8_t walk = 0;
-					//for(uint16_t x = 0;x<1400;x++)
-					//{
-						//ind_ptr[x] = walk;
-						//spi_packet->spi_crc += walk;
-						//walk++;
-					//}
-					//spi_packet->tag = 2 + 4;
-					//spi_packet->spi_size = SPI_HEADER_SIZE + 1400;
-					//pending_spi_command = SPI_SEND_PKT;	// We are waiting to forward the packet
-					//spi_slave_send_size = spi_packet->spi_size;
-					//spi_slave_send_count = spi_slave_send_size;
-					//ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
-				//}
-			// ***** END *****
 		return;
 	} else if (timer_alt == 2)
 	{
@@ -642,4 +618,43 @@ void SPI_Handler(void)
 		// ***** END *****
 	}
 
+}
+
+uint8_t masterslave_test(void)
+{
+	uint8_t pattern = 0;
+	for(uint16_t i=0;i<1400;i++)
+	{
+		shared_buffer[i] = pattern++;
+	}
+	MasterStackSend(&shared_buffer, 1400, 8);
+	return;
+}
+
+uint8_t slavemaster_test(void)
+{
+	// Note: the pending check may need to be moved outside of the function call
+	if (slave_ready == true && pending_spi_command == SPI_SEND_CLEAR)
+	{
+		// PREPARE TEST PACKET from SLAVE to MASTER
+		spi_packet = &shared_buffer;
+		spi_packet->premable = SPI_PACKET_PREAMBLE;
+		spi_packet->ul_rcv_size = 1400;
+		spi_packet->spi_crc = 0;
+		uint8_t*ind_ptr = &spi_packet->pkt_buffer;
+		uint8_t walk = 0;
+		for(uint16_t x = 0;x<1400;x++)
+		{
+			ind_ptr[x] = walk;
+			spi_packet->spi_crc += walk;
+			walk++;
+		}
+		spi_packet->tag = 2 + 4;
+		spi_packet->spi_size = SPI_HEADER_SIZE + 1400;
+		pending_spi_command = SPI_SEND_PKT;	// We are waiting to forward the packet
+		spi_slave_send_size = spi_packet->spi_size;
+		spi_slave_send_count = spi_slave_send_size;
+		ioport_set_pin_level(SPI_IRQ1, true);	// Set the IRQ to signal the slave wants to send something
+	}
+	return;
 }

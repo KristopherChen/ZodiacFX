@@ -71,4 +71,8 @@ void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port);
 void MasterStackRcv(void);
 void Slave_timer(void);
 
+// ***** Stacking Test Functions *****
+uint8_t masterslave_test(void);		// Send pattern from master -> slave
+uint8_t slavemaster_test(void);		// Send pattern from slave -> master
+
 #endif /* STACKING_H_ */

@@ -300,16 +300,20 @@ void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port)
 	// Send the SPI packet header
 	for(uint16_t ct=0; ct<SPI_HEADER_SIZE; ct++)
 	{
-		spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
+		//spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
 		spi_write(SPI_MASTER_BASE, spi_head_buffer[ct], 0, 0);
-		while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		for(uint16_t delay=0; delay<10; delay++);
+		while(ioport_get_pin_level(SPI_IRQ1) == true);
 	}
 	// Send the SPI packet body
 	for(uint16_t ct=0; ct<ul_size; ct++)
 	{
-		spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
+		//spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
 		spi_write(SPI_MASTER_BASE, p_uc_data[ct], 0, 0);
-		while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		for(uint16_t delay=0; delay<10; delay++);
+		while(ioport_get_pin_level(SPI_IRQ1) == true);
 	}
 	
 	return;
@@ -474,70 +478,77 @@ void MasterStackRcv(void)
 */
 void SPI_Handler(void)
 {
+	ioport_set_pin_level(SPI_IRQ1, true);
+	if (!(spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF))
+	{
+		ioport_set_pin_level(SPI_IRQ1, false);
+		return;
+	}
 	static uint16_t data;
 	static uint32_t receive_timeout = 0;	// Timeout for SPI data receive (MASTER->SLAVE)
 	uint8_t uc_pcs;
 	
 	if (slave_ready == false)		// Is this the first data we have received?
 	{
-		if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
-		{
+		//if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
+		//{
 			spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
 			if (data == 0xaa) 
 			{
 				ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ
 				slave_ready = true;
 			}
+			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
-		}
+		//}
 	}
 	
-	if(pending_spi_command == SPI_SEND_STATS)	// We send the master our port stats
-	{
-		if (spi_slave_send_count <= 0)
-		{
-			if (spi_dummy_bytes < 2)
-			{
-				spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
-				spi_dummy_bytes++;
-				return;
-			}			
-			pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
-			ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
-			spi_dummy_bytes = 0;
-		} else {
-			spi_write(SPI_SLAVE_BASE, spi_stats_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
-			spi_slave_send_count--;
-		}		
-		return;	
-	}
-
-	if(pending_spi_command == SPI_SEND_PKT)	// Send slave packet to master
-	{
-		if (spi_slave_send_count <= 0)
-		{
-			// Flush out last two bytes
-			if (spi_dummy_bytes < 2)
-			{
-				spi_write(SPI_SLAVE_BASE, 0xff, 0, 0); // *****
-				spi_dummy_bytes++;
-				return;
-			}
-			pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
-			ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
-			spi_dummy_bytes = 0;
-		} else {
-			while(spi_slave_send_count > 0)
-			{
-				spi_write(SPI_SLAVE_BASE, shared_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
-				spi_slave_send_count--;
-				// Wait for master to send the next byte
-				while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
-				spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-			}
-		}
-		return;
-	}
+	//if(pending_spi_command == SPI_SEND_STATS)	// We send the master our port stats
+	//{
+		//if (spi_slave_send_count <= 0)
+		//{
+			//if (spi_dummy_bytes < 2)
+			//{
+				//spi_write(SPI_SLAVE_BASE, 0xff, 0, 0);
+				//spi_dummy_bytes++;
+				//return;
+			//}			
+			//pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
+			//ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
+			//spi_dummy_bytes = 0;
+		//} else {
+			//spi_write(SPI_SLAVE_BASE, spi_stats_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
+			//spi_slave_send_count--;
+		//}		
+		//return;	
+	//}
+//
+	//if(pending_spi_command == SPI_SEND_PKT)	// Send slave packet to master
+	//{
+		//if (spi_slave_send_count <= 0)
+		//{
+			//// Flush out last two bytes
+			//if (spi_dummy_bytes < 2)
+			//{
+				//spi_write(SPI_SLAVE_BASE, 0xff, 0, 0); // *****
+				//spi_dummy_bytes++;
+				//return;
+			//}
+			//pending_spi_command = SPI_SEND_CLEAR;	// Clear the pending command
+			//ioport_set_pin_level(SPI_IRQ1, false);	// turn off the IRQ because we are done
+			//spi_dummy_bytes = 0;
+		//} else {
+			//while(spi_slave_send_count > 0)
+			//{
+				//spi_write(SPI_SLAVE_BASE, shared_buffer[spi_slave_send_size - spi_slave_send_count], 0, 0);
+				//spi_slave_send_count--;
+				//// Wait for master to send the next byte
+				//while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
+				//spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+			//}
+		//}
+		//return;
+	//}
 
 	if(pending_spi_command == SPI_SEND_CLEAR)
 	{
@@ -546,6 +557,7 @@ void SPI_Handler(void)
 		{
 			pending_spi_command = SPI_RCV_PREAMBLE;
 		}
+		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 	}
 
@@ -565,6 +577,7 @@ void SPI_Handler(void)
 			slave_rx_error_count++;
 			pending_spi_command = SPI_SEND_CLEAR;
 		}
+		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 	}
 	
@@ -579,8 +592,8 @@ void SPI_Handler(void)
 		static uint16_t spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 		
 		// Read next byte
-		spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
-		while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
+		//spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
+		//while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
 		spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
 
 		if(spi_read_size == GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE && spi_count == 3)
@@ -594,6 +607,7 @@ void SPI_Handler(void)
 				spi_count = 2;
 				spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 				slave_rx_error_count++;
+				ioport_set_pin_level(SPI_IRQ1, false);
 				return;
 			}
 		}
@@ -603,6 +617,7 @@ void SPI_Handler(void)
 		{
 			// Wait for next interrupt
 			spi_count++;
+			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -618,6 +633,7 @@ void SPI_Handler(void)
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			slave_rx_error_count++;
+			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -636,6 +652,7 @@ void SPI_Handler(void)
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			slave_rx_error_count++;
+			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -649,10 +666,11 @@ void SPI_Handler(void)
 		}
 		// Packet receive complete
 		// Clean up and return
-		slave_rx_count += spi_packet->ul_rcv_size;
+		slave_rx_count += spi_packet->spi_size;
 		pending_spi_command = SPI_SEND_CLEAR;
 		spi_count = 2;
 		spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
+		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 
 		// ***** END *****

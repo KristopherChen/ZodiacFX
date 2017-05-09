@@ -232,7 +232,7 @@ int main (void)
 		if(masterselect == false)
 		{
 			// ***** Generate SPI MASTER -> SLAVE test pattern *****
-			for(uint32_t ct=0; ct<10000000; ct++);
+			for(uint32_t ct=0; ct<1; ct++);
 			test_pattern();
 			MasterStackSend(&shared_buffer, 1400, 8);
 			// ***** END *****

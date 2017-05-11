@@ -478,10 +478,8 @@ void MasterStackRcv(void)
 */
 void SPI_Handler(void)
 {
-	ioport_set_pin_level(SPI_IRQ1, true);
 	if (!(spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF))
 	{
-		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 	}
 	static uint16_t data;
@@ -557,7 +555,6 @@ void SPI_Handler(void)
 		{
 			pending_spi_command = SPI_RCV_PREAMBLE;
 		}
-		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 	}
 
@@ -577,7 +574,6 @@ void SPI_Handler(void)
 			slave_rx_error_count++;
 			pending_spi_command = SPI_SEND_CLEAR;
 		}
-		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 	}
 	
@@ -607,7 +603,6 @@ void SPI_Handler(void)
 				spi_count = 2;
 				spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 				slave_rx_error_count++;
-				ioport_set_pin_level(SPI_IRQ1, false);
 				return;
 			}
 		}
@@ -617,7 +612,6 @@ void SPI_Handler(void)
 		{
 			// Wait for next interrupt
 			spi_count++;
-			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -633,7 +627,6 @@ void SPI_Handler(void)
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			slave_rx_error_count++;
-			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -652,7 +645,6 @@ void SPI_Handler(void)
 			spi_count = 2;
 			spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
 			slave_rx_error_count++;
-			ioport_set_pin_level(SPI_IRQ1, false);
 			return;
 		}
 		
@@ -670,7 +662,6 @@ void SPI_Handler(void)
 		pending_spi_command = SPI_SEND_CLEAR;
 		spi_count = 2;
 		spi_read_size = GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE;
-		ioport_set_pin_level(SPI_IRQ1, false);
 		return;
 
 		// ***** END *****

@@ -125,7 +125,7 @@ void spi_slave_initialize(void)
 	spi_set_peripheral_chip_select_value(SPI_SLAVE_BASE, SPI_CHIP_SEL);
 	spi_set_clock_polarity(SPI_SLAVE_BASE, SPI_CHIP_SEL, SPI_CLK_POLARITY);
 	spi_set_clock_phase(SPI_SLAVE_BASE, SPI_CHIP_SEL, SPI_CLK_PHASE);
-	spi_set_bits_per_transfer(SPI_SLAVE_BASE, SPI_CHIP_SEL, SPI_CSR_BITS_8_BIT);
+	spi_set_bits_per_transfer(SPI_SLAVE_BASE, SPI_CHIP_SEL, SPI_CSR_BITS_9_BIT);
 	spi_enable_interrupt(SPI_SLAVE_BASE, SPI_IER_RDRF);
 	spi_enable(SPI_SLAVE_BASE);
 	ioport_set_pin_level(SPI_IRQ1, false);
@@ -147,7 +147,7 @@ void spi_master_initialize(void)
 	spi_disable_loopback(SPI_MASTER_BASE);
 	spi_set_peripheral_chip_select_value(SPI_MASTER_BASE, SPI_CHIP_SEL);
 	spi_set_transfer_delay(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_DLYBS, SPI_DLYBCT);
-	spi_set_bits_per_transfer(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_CSR_BITS_8_BIT);
+	spi_set_bits_per_transfer(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_CSR_BITS_9_BIT);
 	spi_set_baudrate_div(SPI_MASTER_BASE, SPI_CHIP_SEL, (sysclk_get_cpu_hz() / gs_ul_spi_clock));
 	spi_set_clock_polarity(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_CLK_POLARITY);
 	spi_set_clock_phase(SPI_MASTER_BASE, SPI_CHIP_SEL, SPI_CLK_PHASE);
@@ -255,6 +255,7 @@ void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port)
 	static uint16_t data;
 	uint8_t *p_buffer;
 	uint8_t outport;
+	static bool xfer_check = true;
 	
 	uint8_t spi_head_buffer[SPI_HEADER_SIZE] = {0};
 	
@@ -300,20 +301,45 @@ void MasterStackSend(uint8_t *p_uc_data, uint16_t ul_size, uint32_t port)
 	// Send the SPI packet header
 	for(uint16_t ct=0; ct<SPI_HEADER_SIZE; ct++)
 	{
-		//spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
-		spi_write(SPI_MASTER_BASE, spi_head_buffer[ct], 0, 0);
+		spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
+		if((data & 0xFF) != 0xAA && ct > 1)
+		{
+			// Re-write the previous byte
+			ct=ct-2;
+			xfer_check = !xfer_check;
+			data = spi_head_buffer[ct] + (xfer_check << 8);
+			spi_write(SPI_MASTER_BASE, data, 0, 0);
+		}
+		else
+		{
+			xfer_check = !xfer_check;
+			data = spi_head_buffer[ct] + (xfer_check << 8);
+			spi_write(SPI_MASTER_BASE, data, 0, 0);
+		}
 		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		for(uint16_t delay=0; delay<10; delay++);
-		while(ioport_get_pin_level(SPI_IRQ1) == true);
+		for(uint16_t delay=0; delay<150; delay++);
 	}
 	// Send the SPI packet body
 	for(uint16_t ct=0; ct<ul_size; ct++)
 	{
-		//spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
-		spi_write(SPI_MASTER_BASE, p_uc_data[ct], 0, 0);
+		spi_read(SPI_MASTER_BASE, &data, &uc_pcs);
+		if((data & 0xFF) != 0xAA && ct > 1)
+		{
+			// Re-write the previous byte
+			ct=ct-2;
+			xfer_check = !xfer_check;
+			data = p_uc_data[ct] + (xfer_check << 8);
+			spi_write(SPI_MASTER_BASE, data, 0, 0);
+		}
+		else
+		{
+			xfer_check = !xfer_check;
+			data = p_uc_data[ct] + (xfer_check << 8);
+			spi_write(SPI_MASTER_BASE, data, 0, 0);
+		}
+
 		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		for(uint16_t delay=0; delay<10; delay++);
-		while(ioport_get_pin_level(SPI_IRQ1) == true);
+		for(uint16_t delay=0; delay<150; delay++);
 	}
 	
 	return;
@@ -486,6 +512,8 @@ void SPI_Handler(void)
 	static uint32_t receive_timeout = 0;	// Timeout for SPI data receive (MASTER->SLAVE)
 	uint8_t uc_pcs;
 	
+	static bool xfer_check_rx = false;
+	
 	if (slave_ready == false)		// Is this the first data we have received?
 	{
 		//if (spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF)
@@ -551,9 +579,10 @@ void SPI_Handler(void)
 	if(pending_spi_command == SPI_SEND_CLEAR)
 	{
 		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		if (data == 0xBC)
+		if ((data & 0xFF) == 0xBC)
 		{
 			pending_spi_command = SPI_RCV_PREAMBLE;
+			spi_write(SPI_SLAVE_BASE, 0xAA, 0, 0);
 		}
 		return;
 	}
@@ -561,13 +590,14 @@ void SPI_Handler(void)
 	if(pending_spi_command == SPI_RCV_PREAMBLE)
 	{
 		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
-		if (data == 0xBC)
+		if ((data & 0xFF) == 0xBC)
 		{
 			pending_spi_command = SPI_RECEIVE;
 			//memset(&shared_buffer,0,sizeof(shared_buffer));	// *****
 			// Write preamble to SPI packet header
 			shared_buffer[0] = 0xBC;
 			shared_buffer[1] = 0xBC;
+			spi_write(SPI_SLAVE_BASE, 0xAA, 0, 0);
 		}
 		else
 		{
@@ -590,8 +620,21 @@ void SPI_Handler(void)
 		// Read next byte
 		//spi_write(SPI_SLAVE_BASE, 0xbb, 0, 0);
 		//while ((spi_read_status(SPI_SLAVE_BASE) & SPI_SR_RDRF) == 0);
-		spi_read(SPI_SLAVE_BASE, &shared_buffer[spi_count], &uc_pcs);
-
+		spi_read(SPI_SLAVE_BASE, &data, &uc_pcs);
+		
+		if(((data>>8)&1) != xfer_check_rx)
+		{
+			// ERROR: missing byte
+			spi_write(SPI_SLAVE_BASE, 0xBB, 0, 0);
+			return;
+		}
+		else
+		{
+			xfer_check_rx = !xfer_check_rx;
+			shared_buffer[spi_count] = (data & 0xFF);
+			spi_write(SPI_SLAVE_BASE, 0xAA, 0, 0);
+		}
+		
 		if(spi_read_size == GMAC_FRAME_LENTGH_MAX + SPI_HEADER_SIZE && spi_count == 3)
 		{
 			spi_read_size = shared_buffer[2] + (shared_buffer[3]*256);

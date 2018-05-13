@@ -52,14 +52,14 @@ extern struct table_counter table_counters[MAX_TABLES];
 extern int OF_Version;
 extern bool rcv_freq;
 extern uint8_t NativePortMatrix;
-extern struct ofp10_port_stats phys10_port_stats[4];
-extern uint8_t port_status[4];
+extern struct ofp10_port_stats phys10_port_stats[TOTAL_PORTS];
+extern uint8_t port_status[TOTAL_PORTS];
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
 extern struct zodiac_config Zodiac_Config;
 extern struct ofp_switch_config Switch_config;
 
 //Internal Functions
-void packet_in(uint8_t *buffer, uint16_t ul_size, uint8_t port, uint8_t reason);
+void packet_in(uint8_t *buffer, uint16_t ul_size, uint32_t port, uint8_t reason);
 void features_reply10(uint32_t xid);
 void set_config10(struct ofp_header * msg);
 void config_reply(uint32_t xid);
@@ -101,7 +101,7 @@ void nnOF10_tablelookup(uint8_t *p_uc_data, uint32_t *ul_size, int port)
 	uint16_t packet_size;
 	struct packet_fields fields = {0};
 	packet_fields_parser(p_uc_data, &fields);
-		
+
 	memcpy(&packet_size, ul_size, 2);
 	uint16_t eth_prot;
 	memcpy(&eth_prot, p_uc_data + 12, 2);
@@ -443,14 +443,13 @@ void features_reply10(uint32_t xid)
 	features.n_buffers = htonl(0);		// Number of packets that can be buffered
 	features.n_tables = 1;		// Number of flow tables
 	features.capabilities = htonl(OFPC10_FLOW_STATS + OFPC10_TABLE_STATS + OFPC10_PORT_STATS);	// Switch Capabilities
-	features.actions = htonl((1 << OFPAT10_OUTPUT) + (1 << OFPAT10_SET_VLAN_VID) + (1 << OFPAT10_SET_DL_SRC) + (1 << OFPAT10_SET_DL_DST) + (1 << OFPAT10_SET_NW_SRC) + (1 << OFPAT10_SET_NW_DST) + (1 << OFPAT10_SET_TP_SRC) + (1 << OFPAT10_SET_TP_DST));		// Action Capabilities
-
+	features.actions = htonl((1 << OFPAT10_OUTPUT) + (1 << OFPAT10_SET_VLAN_VID) + (1 << OFPAT10_SET_VLAN_PCP) + (1 << OFPAT10_STRIP_VLAN) + (1 << OFPAT10_SET_DL_SRC) + (1 << OFPAT10_SET_DL_DST) + (1 << OFPAT10_SET_NW_SRC) + (1 << OFPAT10_SET_NW_DST) + (1 << OFPAT10_SET_NW_TOS) + (1 << OFPAT10_SET_TP_SRC) + (1 << OFPAT10_SET_TP_DST));		// Action Capabilities
 	uint8_t mac[] = {0x00,0x00,0x00,0x00,0x00,0x00};
 
 	memcpy(&buf, &features, sizeof(struct ofp10_switch_features));
 	update_port_status();		//update port status
 
-	for(l = 0; l< 4; l++)
+	for(l = 0; l<TOTAL_PORTS; l++)
 	{
 		if(Zodiac_Config.of_port[l] == 1)
 		{
@@ -475,9 +474,8 @@ void features_reply10(uint32_t xid)
 			j ++;
 		}
 	}
-
 	memcpy(&buf[sizeof(struct ofp10_switch_features)], phys_port, sizeof(phys_port));
-	sendtcp(&buf, bufsize);
+	sendtcp(&buf, bufsize, 0);
 	return;
 }
 
@@ -510,7 +508,7 @@ void config_reply(uint32_t xid)
 	cfg_reply.header.length = HTONS(sizeof(cfg_reply));
 	cfg_reply.flags = OFPC_FRAG_NORMAL;
 	cfg_reply.miss_send_len = 128;		// Send the first 128 bytes of the packet
-	sendtcp(&cfg_reply, sizeof(cfg_reply));
+	sendtcp(&cfg_reply, sizeof(cfg_reply), 1);
 	return;
 }
 
@@ -527,7 +525,7 @@ void barrier10_reply(uint32_t xid)
 	of_barrier.length = htons(sizeof(of_barrier));
 	of_barrier.type   = OFPT10_BARRIER_REPLY;
 	of_barrier.xid = xid;
-	sendtcp(&of_barrier, sizeof(of_barrier));
+	sendtcp(&of_barrier, sizeof(of_barrier), 0);
 	return;
 }
 
@@ -546,7 +544,7 @@ void vendor_reply(uint32_t xid)
 	err_msg.header.xid = xid;
 	err_msg.type = htons(OFPET10_BAD_REQUEST);
 	err_msg.code = htons(OFPBRC10_BAD_VENDOR);
-	sendtcp(&err_msg, sizeof(err_msg));
+	sendtcp(&err_msg, sizeof(err_msg), 1);
 	return;
 }
 
@@ -573,7 +571,7 @@ void stats10_desc_reply(struct ofp_stats_request *msg)
 	reply->header.length = HTONS(len);
 	reply->flags = 0;
 	memcpy(reply->body, &zodiac_desc, sizeof(zodiac_desc));
-	sendtcp(&shared_buffer, len);
+	sendtcp(&shared_buffer, len, 1);
 	return;
 }
 
@@ -595,7 +593,7 @@ void stats_flow_reply(struct ofp_stats_request *msg)
 	int len = flow_stats_msg10(&statsbuffer, 0, iLastFlow);
 	reply->header.length = htons(len);
 	reply->flags = 0;
-	sendtcp(&statsbuffer, len);
+	sendtcp(&statsbuffer, len, 0);
 	return;
 }
 
@@ -626,7 +624,7 @@ void stats_table_reply(struct ofp_stats_request *msg)
 	tbl_stats.matched_count = htonll(table_counters[0].matched_count);
 	memcpy(buf, &reply, sizeof(struct ofp10_stats_reply));
 	memcpy(buf + sizeof(struct ofp10_stats_reply), &tbl_stats, sizeof(struct ofp_table_stats));
-	sendtcp(&buf, len);
+	sendtcp(&buf, len, 0);
 	return;
 }
 
@@ -638,51 +636,34 @@ void stats_table_reply(struct ofp_stats_request *msg)
 */
 void stats_port_reply(struct ofp_stats_request *msg)
 {
-	struct ofp10_port_stats zodiac_port_stats[3];
+	struct ofp10_port_stats zodiac_port_stats;
 	struct ofp10_stats_reply reply;
 	struct ofp10_port_stats_request *port_req = msg->body;
 	int stats_size = 0;
-	int k, len;
-	char buf[1024];
+	int len = 0;
 	int port = ntohs(port_req->port_no);
+	uint8_t * buffer = shared_buffer;	// Local position index
+
+	// Clear shared_buffer
+	memset(&shared_buffer, 0, SHARED_BUFFER_LEN);
 
 	if (port == OFPP_NONE)
 	{
-		stats_size = (sizeof(struct ofp10_port_stats) * 3);
-		len = sizeof(struct ofp10_stats_reply) + stats_size;
-
-		reply.header.version = OF_Version;
-		reply.header.type = OFPT10_STATS_REPLY;
-		reply.header.length = htons(len);
-		reply.header.xid = msg->header.xid;
-		reply.type = htons(OFPST_PORT);
-		reply.flags = 0;
-
-		for(k=0; k<3;k++)
+		// Find number of OpenFlow ports present
+		uint8_t ofports = 0;
+		for(uint8_t k=0; k<TOTAL_PORTS; k++)
 		{
-			zodiac_port_stats[k].port_no = htons(k+1);
-			zodiac_port_stats[k].rx_packets = htonll(phys10_port_stats[k].rx_packets);
-			zodiac_port_stats[k].tx_packets = htonll(phys10_port_stats[k].tx_packets);
-			zodiac_port_stats[k].rx_bytes = htonll(phys10_port_stats[k].rx_bytes);
-			zodiac_port_stats[k].tx_bytes = htonll(phys10_port_stats[k].tx_bytes);
-			zodiac_port_stats[k].rx_crc_err = htonll(phys10_port_stats[k].rx_crc_err);
-			zodiac_port_stats[k].rx_dropped = htonll(phys10_port_stats[k].rx_dropped);
-			zodiac_port_stats[k].tx_dropped = htonll(phys10_port_stats[k].tx_dropped);
-			zodiac_port_stats[k].rx_frame_err = 0;
-			zodiac_port_stats[k].rx_over_err = 0;
-			zodiac_port_stats[k].tx_errors = 0;
-			zodiac_port_stats[k].rx_errors = 0;
-			zodiac_port_stats[k].collisions = 0;
-
+			// Check if port is NOT native
+			if(!(NativePortMatrix & (1<<(k))))
+			{
+				ofports++;
+			}
 		}
-		memcpy(buf, &reply, sizeof(struct ofp10_stats_reply));
-		memcpy(buf + sizeof(struct ofp10_stats_reply), &zodiac_port_stats[0], stats_size);
+		
+		stats_size = (sizeof(struct ofp10_port_stats) * ofports);	// Calculate length of stats
+		len = sizeof(struct ofp10_stats_reply) + stats_size;		// Calculate total reply length
 
-	} else
-	{
-		stats_size = sizeof(struct ofp10_port_stats);
-		len = sizeof(struct ofp10_stats_reply) + stats_size;
-
+		// Format reply header
 		reply.header.version = OF_Version;
 		reply.header.type = OFPT10_STATS_REPLY;
 		reply.header.length = htons(len);
@@ -690,24 +671,88 @@ void stats_port_reply(struct ofp_stats_request *msg)
 		reply.type = htons(OFPST_PORT);
 		reply.flags = 0;
 
-		zodiac_port_stats[port].port_no = htons(port);
-		zodiac_port_stats[port].rx_packets = htonll(phys10_port_stats[port-1].rx_packets);
-		zodiac_port_stats[port].tx_packets = htonll(phys10_port_stats[port-1].tx_packets);
-		zodiac_port_stats[port].rx_bytes = htonll(phys10_port_stats[port-1].rx_bytes);
-		zodiac_port_stats[port].tx_bytes = htonll(phys10_port_stats[port-1].tx_bytes);
-		zodiac_port_stats[port].rx_crc_err = htonll(phys10_port_stats[port-1].rx_crc_err);
-		zodiac_port_stats[port].rx_dropped = htonll(phys10_port_stats[port-1].rx_dropped);
-		zodiac_port_stats[port].tx_dropped = htonll(phys10_port_stats[port-1].tx_dropped);
-		zodiac_port_stats[port].rx_frame_err = 0;
-		zodiac_port_stats[port].rx_over_err = 0;
-		zodiac_port_stats[port].tx_errors = 0;
-		zodiac_port_stats[port].rx_errors = 0;
-		zodiac_port_stats[port].collisions = 0;
+		// Write reply header to buffer
+		memcpy(buffer, &reply, sizeof(struct ofp10_stats_reply));
+		buffer += sizeof(struct ofp10_stats_reply);
 
-		memcpy(buf, &reply, sizeof(struct ofp10_stats_reply));
-		memcpy(buf + sizeof(struct ofp10_stats_reply), &zodiac_port_stats[port], stats_size);
+		// Write port stats to reply message
+		for(uint8_t k=0; k<TOTAL_PORTS; k++)
+		{
+			// Check if port is NOT native
+			if(!(NativePortMatrix & (1<<(k))))
+			{
+				zodiac_port_stats.port_no = htons(k+1);
+				zodiac_port_stats.rx_packets = htonll(phys10_port_stats[k].rx_packets);
+				zodiac_port_stats.tx_packets = htonll(phys10_port_stats[k].tx_packets);
+				zodiac_port_stats.rx_bytes = htonll(phys10_port_stats[k].rx_bytes);
+				zodiac_port_stats.tx_bytes = htonll(phys10_port_stats[k].tx_bytes);
+				zodiac_port_stats.rx_crc_err = htonll(phys10_port_stats[k].rx_crc_err);
+				zodiac_port_stats.rx_dropped = htonll(phys10_port_stats[k].rx_dropped);
+				zodiac_port_stats.tx_dropped = htonll(phys10_port_stats[k].tx_dropped);
+				zodiac_port_stats.rx_frame_err = 0;
+				zodiac_port_stats.rx_over_err = 0;
+				zodiac_port_stats.tx_errors = 0;
+				zodiac_port_stats.rx_errors = 0;
+				zodiac_port_stats.collisions = 0;
+				
+				if((buffer + sizeof(struct ofp10_port_stats)) < (shared_buffer + SHARED_BUFFER_LEN))
+				{
+					// Write port stats to buffer
+					memcpy(buffer, &zodiac_port_stats, sizeof(struct ofp10_port_stats));
+					// Increment buffer pointer
+					buffer += sizeof(struct ofp10_port_stats);
+				}
+				else
+				{
+					TRACE("openflow_10.c: unable to write port stats to shared buffer");
+				}
+			}
+		}
 	}
-	sendtcp(&buf, len);
+	else if (port > 0 && port <= TOTAL_PORTS)	// Respond to request for ports
+	{
+		// Check if port is NOT native
+		if(!(NativePortMatrix & (1<<(port-1))))
+		{
+			stats_size = sizeof(struct ofp10_port_stats);
+			len = sizeof(struct ofp10_stats_reply) + stats_size;
+
+			reply.header.version = OF_Version;
+			reply.header.type = OFPT10_STATS_REPLY;
+			reply.header.length = htons(len);
+			reply.header.xid = msg->header.xid;
+			reply.type = htons(OFPST_PORT);
+			reply.flags = 0;
+
+			zodiac_port_stats.port_no = htons(port);
+			zodiac_port_stats.rx_packets = htonll(phys10_port_stats[port-1].rx_packets);
+			zodiac_port_stats.tx_packets = htonll(phys10_port_stats[port-1].tx_packets);
+			zodiac_port_stats.rx_bytes = htonll(phys10_port_stats[port-1].rx_bytes);
+			zodiac_port_stats.tx_bytes = htonll(phys10_port_stats[port-1].tx_bytes);
+			zodiac_port_stats.rx_crc_err = htonll(phys10_port_stats[port-1].rx_crc_err);
+			zodiac_port_stats.rx_dropped = htonll(phys10_port_stats[port-1].rx_dropped);
+			zodiac_port_stats.tx_dropped = htonll(phys10_port_stats[port-1].tx_dropped);
+			zodiac_port_stats.rx_frame_err = 0;
+			zodiac_port_stats.rx_over_err = 0;
+			zodiac_port_stats.tx_errors = 0;
+			zodiac_port_stats.rx_errors = 0;
+			zodiac_port_stats.collisions = 0;
+
+			memcpy(shared_buffer, &reply, sizeof(struct ofp10_stats_reply));
+			memcpy(shared_buffer + sizeof(struct ofp10_stats_reply), &zodiac_port_stats, stats_size);
+		}
+		else
+		{
+			TRACE("openflow_10.c: requested port is out of range");
+			of10_error(buffer, OFPET10_BAD_REQUEST, OFPBRC10_BAD_STAT);
+		}
+	}
+	else
+	{
+		TRACE("openflow_10.c: requested port is out of range");
+		of10_error(buffer, OFPET10_BAD_REQUEST, OFPBRC10_BAD_STAT);
+	}
+	sendtcp(&shared_buffer, len, 0);
 	return;
 }
 
@@ -757,7 +802,7 @@ void packet_out(struct ofp_header *msg)
 *	@param reason - reason for the packet in.
 *
 */
-void packet_in(uint8_t *buffer, uint16_t ul_size, uint8_t port, uint8_t reason)
+void packet_in(uint8_t *buffer, uint16_t ul_size, uint32_t port, uint8_t reason)
 {
 	uint16_t send_size = ul_size;
 	if(tcp_sndbuf(tcp_pcb) < (send_size + 18)) return;
@@ -776,7 +821,7 @@ void packet_in(uint8_t *buffer, uint16_t ul_size, uint8_t port, uint8_t reason)
 	pi->total_len = HTONS(ul_size);
 	pi->reason = reason;
 	memcpy(pi->data, buffer, send_size);
-	sendtcp(&shared_buffer, size);
+	sendtcp(&shared_buffer, size, 1);
 	return;
 }
 
@@ -788,6 +833,7 @@ void packet_in(uint8_t *buffer, uint16_t ul_size, uint8_t port, uint8_t reason)
 */
 void flow_mod(struct ofp_header *msg)
 {
+	///**/TRACE("____________________ FLOWMOD ENTRY");
 	struct ofp_flow_mod * ptr_fm;
 	ptr_fm = (struct ofp_flow_mod *) msg;
 
@@ -796,6 +842,7 @@ void flow_mod(struct ofp_header *msg)
 	{
 
 		case OFPFC_ADD:
+		///**/TRACE("____________________ ADD");
 		flow_add(msg);
 		break;
 
@@ -852,7 +899,7 @@ void flow_add(struct ofp_header *msg)
 		of10_error(msg, OFPET10_FLOW_MOD_FAILED, OFPFMFC10_ALL_TABLES_FULL);
 		return;
 	}
-	TRACE("Allocating %d bytes at %p for flow %d\r\n", sizeof(struct ofp_flow_mod), iLastFlow+1);
+	TRACE("Allocating %d bytes at %p for flow %d", sizeof(struct ofp_flow_mod), flow_match10[iLastFlow], iLastFlow+1);
 	
 	memcpy(flow_match10[iLastFlow], ptr_fm, sizeof(struct ofp_flow_mod));
 
@@ -919,6 +966,7 @@ void flow_modify(struct ofp_header *msg)
 	int action_size = ntohs(msg->length) - sizeof(struct ofp_flow_mod);
 	int action_cnt_size = 0;
 	int action_count = 0;
+	int matched = 0;
 
 	for(int q=0;q<iLastFlow;q++)
 	{
@@ -926,6 +974,7 @@ void flow_modify(struct ofp_header *msg)
 		{
 			if (field_match10(&ptr_fm->match, &flow_match10[q]->match) == 1)
 			{
+				matched = 1;
 				// Update actions
 				action_hdr = &ptr_fm->actions;
 				if(action_size > 0)
@@ -967,11 +1016,15 @@ void flow_modify(struct ofp_header *msg)
 						action_cnt_size += ntohs(action_hdr1->len);
 					}
 				}
-				} else {
-				flow_add(msg);	// If there is no existing flow that matches then it's just an ADD
 			}
 		}
 	}
+	// If there is no existing flow that matches then it's just an ADD
+	if (matched == 1)
+	{
+		flow_add(msg);
+	}
+
 	return;
 }
 
@@ -990,6 +1043,7 @@ void flow_modify_strict(struct ofp_header *msg)
 	int action_size = ntohs(msg->length) - sizeof(struct ofp_flow_mod);
 	int action_cnt_size = 0;
 	int action_count = 0;
+	int matched = 0;
 
 	for(int q=0;q<iLastFlow;q++)
 	{
@@ -997,6 +1051,7 @@ void flow_modify_strict(struct ofp_header *msg)
 		{
 			if((memcmp(&flow_match10[q]->match, &ptr_fm->match, sizeof(struct ofp_match)) == 0) && (flow_match10[q]->priority == ptr_fm->priority))
 			{
+				matched = 1;
 				// Update actions
 				action_hdr = &ptr_fm->actions;
 				if(action_size > 0)
@@ -1038,10 +1093,13 @@ void flow_modify_strict(struct ofp_header *msg)
 						action_cnt_size += ntohs(action_hdr1->len);
 					}
 				}
-				} else {
-				flow_add(msg);	// If there is no existing flow that matches then it's just an ADD
 			}
 		}
+	}
+	// If there is no existing flow that matches then it's just an ADD
+	if (matched == 1)
+	{
+		flow_add(msg);
 	}
 	return;
 }
@@ -1133,7 +1191,7 @@ void of10_error(struct ofp_header *msg, uint16_t type, uint16_t code)
 	error.code = htons(code);
 	memcpy(error_buf, &error, sizeof(struct ofp_error_msg));
 	memcpy(error_buf + sizeof(struct ofp_error_msg), msg, msglen);
-	sendtcp(&error_buf, (sizeof(struct ofp_error_msg) + msglen));
+	sendtcp(&error_buf, (sizeof(struct ofp_error_msg) + msglen), 1);
 	return;
 }
 
@@ -1162,7 +1220,7 @@ void flowrem_notif10(int flowid, uint8_t reason)
 	ofr.byte_count = flow_counters[flowid].bytes;
 	ofr.idle_timeout = flow_match10[flowid]->idle_timeout;
 	ofr.match = flow_match10[flowid]->match;
-	sendtcp(&ofr, sizeof(struct ofp_flow_removed));
+	sendtcp(&ofr, sizeof(struct ofp_flow_removed), 1);
 	return;
 }
 
@@ -1200,7 +1258,7 @@ void port_status_message10(uint8_t port)
 	ofps.desc.advertised = 0;
 	ofps.desc.supported = 0;
 	ofps.desc.peer = 0;
-	sendtcp(&ofps, htons(ofps.header.length));
+	sendtcp(&ofps, htons(ofps.header.length), 1);
 	TRACE("openflow_10.c: Port Status change notification sent");
 	return;
 }

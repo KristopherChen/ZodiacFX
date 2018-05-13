@@ -42,18 +42,24 @@
 #include "lwip/tcp_impl.h"
 #include "lwip/udp.h"
 #include "switch.h"
+#include "timers.h"
 
 #define ALIGN8(x) (x+7)/8*8
 
 // Global variables
 extern struct zodiac_config Zodiac_Config;
 extern int iLastFlow;
+extern int iLastMeter;
 extern int OF_Version;
 extern int totaltime;
-extern uint8_t last_port_status[4];
-extern uint8_t port_status[4];
+extern uint8_t last_port_status[TOTAL_PORTS];
+extern uint8_t port_status[TOTAL_PORTS];
 extern struct flows_counter flow_counters[MAX_FLOWS_13];
 extern struct table_counter table_counters[MAX_TABLES];
+extern struct meter_entry13 *meter_entry[MAX_METER_13];
+extern struct meter_band_stats_array band_stats_array[MAX_METER_13];
+extern struct group_entry13 group_entry13[MAX_GROUPS];
+extern struct action_bucket action_bucket[MAX_BUCKETS];
 extern struct ofp_flow_mod *flow_match10[MAX_FLOWS_10];
 extern struct flow_tbl_actions *flow_actions10[MAX_FLOWS_10];
 extern struct ofp13_flow_mod *flow_match13[MAX_FLOWS_13];
@@ -99,6 +105,7 @@ void set_ip_checksum(uint8_t *p_uc_data, int packet_size, int iphdr_offset)
 		(ip_addr_t*)&(iphdr->dest),
 		IP_PROTO_TCP,
 		packet_size - payload_offset);
+		TRACE("of_helper.c: TCP header modified, recalculating Checksum. 0x%X", htons(tcphdr->chksum));
 	}
 	if (IPH_PROTO(iphdr) == IP_PROTO_UDP) {
 		udphdr = (struct udp_hdr*)(p_uc_data + payload_offset);
@@ -108,11 +115,13 @@ void set_ip_checksum(uint8_t *p_uc_data, int packet_size, int iphdr_offset)
 		(ip_addr_t*)&(iphdr->dest),
 		IP_PROTO_UDP,
 		packet_size - payload_offset);
+		TRACE("of_helper.c: UDP header modified, recalculating Checksum. 0x%X", htons(udphdr->chksum));
 	}
 	if (IPH_PROTO(iphdr) == IP_PROTO_ICMP) {
 		icmphdr = (struct icmp_echo_hdr*)(p_uc_data + payload_offset);
 		icmphdr->chksum = 0;
 		icmphdr->chksum = inet_chksum(icmphdr, packet_size - payload_offset);
+		TRACE("of_helper.c: ICMP header modified, recalculating Checksum. 0x%X", htons(icmphdr->chksum));
 	}
 	pbuf_free(p);
 
@@ -136,7 +145,7 @@ void nnOF_timer(void)
 	} else if (timer_alt == 1){
 		update_port_status();
 		// If port status has changed send a port status message
-		for (int x=0;x<4;x++)
+		for (int x=0;x<TOTAL_PORTS;x++)
 		{
 			if (last_port_status[x] != port_status[x] && OF_Version == 1 && Zodiac_Config.of_port[x] == 1) port_status_message10(x);
 			if (last_port_status[x] != port_status[x] && OF_Version == 4 && Zodiac_Config.of_port[x] == 1) port_status_message13(x);
@@ -204,7 +213,10 @@ int flowmatch10(uint8_t *pBuffer, int port, struct packet_fields *fields)
 		}
 
 		// If this flow is of a lower priority then one that is already match then there is no point going through a check.
-		if(ntohs(flow_match10[i]->priority) <= ntohs(flow_match10[matched_flow]->priority)) continue;
+		if (matched_flow > -1)
+		{
+			if(ntohs(flow_match10[i]->priority) <= ntohs(flow_match10[matched_flow]->priority)) continue;
+		}
 
 		port_match = (ntohl(flow_match10[i]->match.wildcards) & OFPFW_IN_PORT) || ntohs(flow_match10[i]->match.in_port) == port || flow_match10[i]->match.in_port == 0;
 		eth_src_match = (ntohl(flow_match10[i]->match.wildcards) & OFPFW_DL_SRC) || memcmp(eth_src, flow_match10[i]->match.dl_src, 6) == 0 || memcmp(flow_match10[i]->match.dl_src, zero_field, 6) == 0;
@@ -245,7 +257,9 @@ int flowmatch10(uint8_t *pBuffer, int port, struct packet_fields *fields)
 			if (matched_flow > -1)
 			{
 				if(ntohs(flow_match10[i]->priority) > ntohs(flow_match10[matched_flow]->priority)) matched_flow = i;
-			} else {
+			}
+			else
+			{
 				matched_flow = i;
 			}
 		}
@@ -262,19 +276,34 @@ int flowmatch10(uint8_t *pBuffer, int port, struct packet_fields *fields)
 *
 */
 void packet_fields_parser(uint8_t *pBuffer, struct packet_fields *fields) {
+	// VLAN EtherTypes
 	static const uint8_t vlan1[2] = { 0x81, 0x00 };
 	static const uint8_t vlan2[2] = { 0x88, 0xa8 };
 	static const uint8_t vlan3[2] = { 0x91, 0x00 };
 	static const uint8_t vlan4[2] = { 0x92, 0x00 };
 	static const uint8_t vlan5[2] = { 0x93, 0x00 };
+	// MPLS EtherTypes
+	static const uint8_t mpls1[2] = { 0x88, 0x47 };
+	static const uint8_t mpls2[2] = { 0x88, 0x48 };
 
 	fields->isVlanTag = false;
+	fields->isMPLSTag = false;
 	uint8_t *eth_type = pBuffer + 12;
-	while(memcmp(eth_type, vlan1, 2)==0
-			|| memcmp(eth_type, vlan2, 2)==0
-			|| memcmp(eth_type, vlan3, 2)==0
-			|| memcmp(eth_type, vlan4, 2)==0
-			|| memcmp(eth_type, vlan5, 2)==0){
+	
+	// Get MPLS values
+	if (memcmp(eth_type, mpls1, 2)==0 || memcmp(eth_type, mpls2, 2)==0)
+	{
+		uint32_t mpls;
+		memcpy(&mpls, eth_type+2, 4);
+		fields->mpls_label = ntohl(mpls)>>12;
+		fields->mpls_tc = (ntohl(mpls)>>9)&7;
+		fields->mpls_bos = (ntohl(mpls)>>8)&1;
+		fields->isMPLSTag = true;
+		eth_type += 4;
+	}
+	// Get VLAN IDs
+	while(memcmp(eth_type, vlan1, 2)==0 || memcmp(eth_type, vlan2, 2)==0 || memcmp(eth_type, vlan3, 2)==0 || memcmp(eth_type, vlan4, 2)==0 || memcmp(eth_type, vlan5, 2)==0)
+	{
 		if(fields->isVlanTag == false){ // save outermost value
 			uint8_t tci[2] = { eth_type[2]&0x0f, eth_type[3] };
 			memcpy(&fields->vlanid, tci, 2);
@@ -282,6 +311,7 @@ void packet_fields_parser(uint8_t *pBuffer, struct packet_fields *fields) {
 		fields->isVlanTag = true;
 		eth_type += 4;
 	}
+	
 	memcpy(&fields->eth_prot, eth_type, 2);
 	fields->payload = eth_type + 2; // payload points to ip_hdr, etc.
 	
@@ -327,12 +357,12 @@ int flowmatch13(uint8_t *pBuffer, int port, uint8_t table_id, struct packet_fiel
 	}
 
 	TRACE("of_helper.c: Looking for match in table %d from port %d : "
-		"%.2X:%.2X:%.2X:%.2X:%.2X:%.2X -> %.2X:%.2X:%.2X:%.2X:%.2X:%.2X eth type %4.4X",
+		"%.2X:%.2X:%.2X:%.2X:%.2X:%.2X -> %.2X:%.2X:%.2X:%.2X:%.2X:%.2X - eth type %4.4X - VLAN ID %d",
 		table_id, port,
 		eth_src[0], eth_src[1], eth_src[2], eth_src[3], eth_src[4], eth_src[5],
 		eth_dst[0], eth_dst[1], eth_dst[2], eth_dst[3], eth_dst[4], eth_dst[5],
-		ntohs(fields->eth_prot))
-
+		ntohs(fields->eth_prot), ntohs(fields->vlanid))
+	
 	for (int i=0;i<iLastFlow;i++)
 	{
 		// Make sure its an active flow
@@ -379,7 +409,7 @@ int flowmatch13(uint8_t *pBuffer, int port, uint8_t table_id, struct packet_fiel
 				case OXM_OF_ETH_DST_W:
 				for (int j=0; j<6; j++ )
 				{
-					if (oxm_value[j] != eth_dst[j] & oxm_value[6+j]){
+					if ((oxm_value[j] & oxm_value[6+j]) != eth_dst[j] & oxm_value[6+j]){
 						priority_match = -1;
 					}
 				}
@@ -395,7 +425,7 @@ int flowmatch13(uint8_t *pBuffer, int port, uint8_t table_id, struct packet_fiel
 				case OXM_OF_ETH_SRC_W:
 				for (int j=0; j<6; j++ )
 				{
-					if (oxm_value[j] != eth_src[j] & oxm_value[6+j]){
+					if ((oxm_value[j] & oxm_value[6+j]) != eth_src[j] & oxm_value[6+j]){
 						priority_match = -1;
 					}
 				}
@@ -404,7 +434,15 @@ int flowmatch13(uint8_t *pBuffer, int port, uint8_t table_id, struct packet_fiel
 				case OXM_OF_ETH_TYPE:
 				if (fields->eth_prot != *(uint16_t*)oxm_value)
 				{
-					priority_match = -1;
+					if(*(uint16_t*)oxm_value != htons(0x8847) && *(uint16_t*)oxm_value != htons(0x8848))
+					{
+						priority_match = -1;
+					} else {
+						if (!fields->isMPLSTag)
+						{
+							priority_match = -1;
+						}
+					}
 				}
 				break;
 
@@ -533,6 +571,31 @@ int flowmatch13(uint8_t *pBuffer, int port, uint8_t table_id, struct packet_fiel
 				{
 					priority_match = -1;
 				}
+				break;
+
+				case OXM_OF_MPLS_LABEL:
+				if (fields->isMPLSTag && fields->mpls_label != *(uint32_t*)oxm_value)
+				{
+					priority_match = -1;
+				}
+				break;
+							
+				case OXM_OF_MPLS_TC:
+				if (fields->isMPLSTag && fields->mpls_tc != *oxm_value)
+				{
+					priority_match = -1;
+				}
+				break;
+				
+				case OXM_OF_MPLS_BOS:
+				if (fields->isMPLSTag && fields->mpls_bos != *oxm_value)
+				{
+					priority_match = -1;
+				}
+				break;
+				
+				default:
+				priority_match = -1;
 				break;
 			}
 
@@ -1011,7 +1074,7 @@ void remove_flow13(int flow_id)
 }
 
 /*
-*	Remove a flow entry from the flow table (OF 1.3)
+*	Remove a flow entry from the flow table (OF 1.0)
 *
 *	@param flow_id - the index number of the flow to remove
 *
@@ -1094,6 +1157,7 @@ void flow_timeouts()
 void clear_flows(void)
 {
 	iLastFlow = 0;
+	iLastMeter = 0;
 	membag_init();
 
 	/*	Clear OpenFlow 1.0 flow table	*/
@@ -1125,6 +1189,22 @@ void clear_flows(void)
 	{
 		table_counters[x].lookup_count = 0;
 		table_counters[x].matched_count = 0;
+	}
+	
+	/* Clear Meter Table Pointers*/
+	for(int x=0; x<MAX_METER_13;x++)
+	{
+		if(meter_entry[x] != NULL)
+		{
+			meter_entry[x] = NULL;
+		}
+	}
+	
+	/* Clear Groups*/
+	for(int x=0; x<MAX_GROUPS;x++)
+	{
+		group_entry13[x].active = false;
+		action_bucket[group_entry13[x].bucket_id-1].active = false;
 	}
 }
 
@@ -1213,12 +1293,8 @@ int flow_stats_msg10(char *buffer, int first, int last)
 int flow_stats_msg13(char *buffer, int first, int last)
 {
 	struct ofp13_flow_stats flow_stats;
-	int stats_size = 0;
 	char *buffer_ptr = buffer;
-	int inst_size;
-	int stats_len;
 	int len;
-	int pad = 0;
 
 	for(int k = first; k<last;k++)
 	{
@@ -1250,5 +1326,247 @@ int flow_stats_msg13(char *buffer, int first, int last)
 		buffer_ptr += ntohs(flow_stats.length);
 	}
 	return (buffer_ptr - buffer);
+}
 
+/*
+*	Meter processing for OF 1.3
+*
+*	@param	id		- meter ID to process
+*	@param	bytes	- packet size (for throughput calculations)
+*
+*	@ret	METER_NOACT	- no action needs to be taken
+*	@ret	METER_DROP	- packet needs to be dropped
+*	@ret	val			- increase encoded drop precedence by val (DSCP remark)
+*
+*/
+int	meter_handler(uint32_t id, uint16_t bytes)
+{
+	// Initialise 8x 12-element packet samples
+	static struct meter_sample_array meter_samples[MAX_METER_13];
+	//static uint16_t sample_index = 0;
+	
+	TRACE("of_helper.c: meter id %d needs processing", id);
+	
+	// Get associated meter entry
+	int meter_index = 0;
+	while(meter_entry[meter_index] != NULL && meter_index < MAX_METER_13)
+	{
+		if(meter_entry[meter_index]->meter_id == id)
+		{
+			TRACE("of_helper.c: meter entry found - continuing");
+			break;
+		}
+			
+		meter_index++;
+	}
+	if(meter_entry[meter_index] == NULL || meter_index == MAX_METER_13)
+	{
+		TRACE("of_helper.c: meter entry not found - packet not dropped");
+		return METER_NOACT;
+	}
+	// meter_index now holds the meter bound to the current flow
+	
+	// Update meter counters
+	meter_entry[meter_index]->byte_in_count += bytes;
+	(meter_entry[meter_index]->packet_in_count)++;
+	meter_entry[meter_index]->last_packet_in = sys_get_ms();
+	
+	//// Check if meter has been used before
+	//if(meter_entry[meter_index]->last_packet_in == 0)
+	//{
+		//// Update timer
+		//meter_entry[meter_index]->last_packet_in = sys_get_ms();
+		//
+		//TRACE("of_helper.c: first hit of meter - packet not dropped");
+		//return METER_NOACT;
+	//}
+	
+	// Get current time
+	uint32_t current_time = (uint32_t)(sys_get_ms());
+	
+	// Check configuration flags
+	uint32_t calculated_rate = 0;
+	if(((meter_entry[meter_index]->flags) & OFPMF13_KBPS) == OFPMF13_KBPS)
+	{
+		// Sum sampled bytes
+		uint32_t sampled_bytes = 0;
+		for(uint16_t i; i<POLICING_SAMPLES; i++)
+		{
+			sampled_bytes += meter_samples[meter_index].sample[i].byte_count;
+		}
+		
+		// Find time delta
+		uint32_t sample_time = 0;
+		if(meter_samples[meter_index].sample_index == POLICING_SAMPLES-1)
+		{
+			//sample_time = meter_samples[meter_index].sample[sample_index].packet_time - meter_samples[meter_index].sample[0].packet_time;
+			sample_time = current_time - meter_samples[meter_index].sample[0].packet_time;
+		}
+		else
+		{
+			//sample_time = meter_samples[meter_index].sample[sample_index].packet_time - meter_samples[meter_index].sample[sample_index+1].packet_time;
+			sample_time = current_time - meter_samples[meter_index].sample[meter_samples[meter_index].sample_index+1].packet_time;
+		}
+		
+		calculated_rate = ((sampled_bytes*8)/sample_time);	// bit/ms == kbit/s
+		TRACE("of_helper.c: calculated rate - %d kbps (%d bytes over %d ms)", calculated_rate, sampled_bytes, sample_time);
+	}
+	else if(((meter_entry[meter_index]->flags) & OFPMF13_PKTPS) == OFPMF13_PKTPS)
+	{
+		// Sum sampled packets
+		uint16_t sampled_packets = 0;
+		for(uint16_t i; i<POLICING_SAMPLES; i++)
+		{
+			sampled_packets += meter_samples[meter_index].sample[i].packet_count;
+		}
+		
+		// Find time delta
+		uint32_t sample_time = 0;
+		if(meter_samples[meter_index].sample_index == POLICING_SAMPLES-1)
+		{
+			//sample_time = meter_samples[meter_index].sample[sample_index].packet_time - meter_samples[meter_index].sample[0].packet_time;
+			sample_time = current_time - meter_samples[meter_index].sample[0].packet_time;
+		}
+		else
+		{
+			//sample_time = meter_samples[meter_index].sample[sample_index].packet_time - meter_samples[meter_index].sample[sample_index+1].packet_time;
+			sample_time = current_time - meter_samples[meter_index].sample[meter_samples[meter_index].sample_index+1].packet_time;
+		}
+		
+		calculated_rate = 1000*sampled_packets/sample_time;		// 1000*pkt/ms == pkt/s
+		TRACE("of_helper.c: calculated rate - %d pktps (%d packets over %d ms)", calculated_rate, sampled_packets, sample_time);
+	}
+	else
+	{
+		TRACE("of_helper.c: unsupported meter configuration - packet not dropped");
+		return METER_NOACT;
+	}
+	
+	// Check each band
+	int			bands_processed = 0;
+	uint32_t	highest_rate = 0;			// Highest triggered band rate
+	struct ofp13_meter_band_drop * ptr_highest_band = NULL;	// Store pointer to highest triggered band
+	struct ofp13_meter_band_drop * ptr_band;
+	ptr_band = &(meter_entry[meter_index]->bands);
+	while(bands_processed < meter_entry[meter_index]->band_count)
+	{
+		if(calculated_rate >= ptr_band->rate)
+		{
+			if(ptr_band->rate > highest_rate)
+			{
+				highest_rate = ptr_band->rate;	// Update highest triggered band rate
+				ptr_highest_band = ptr_band;	// Update highest triggered band
+			}			
+		}
+		
+		ptr_band++;	// Move to next band
+		bands_processed++;
+	}
+	
+	// Check if any bands triggered
+	if(highest_rate == 0 || ptr_highest_band == NULL)
+	{
+		TRACE("of_helper.c: no bands triggered - packet not dropped");
+		
+		// Check if last packet was within 1 slice of this one
+		if(meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].packet_time >= (current_time-POLICING_SLICE-1))
+		{
+			meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].byte_count += bytes;
+			meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].packet_count++;
+		}
+		else
+		{
+			// Increment sample index
+			if(meter_samples[meter_index].sample_index >= POLICING_SAMPLES-1)
+			{
+				// Wrap sample_index around
+				meter_samples[meter_index].sample_index = 0;
+			}
+			else
+			{
+				// Increment index
+				meter_samples[meter_index].sample_index++;
+			}
+		
+			// Populate (overwrite) next element
+			meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].packet_time = current_time;
+			meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].byte_count = bytes;
+			meter_samples[meter_index].sample[meter_samples[meter_index].sample_index].packet_count = 0;
+		}
+		
+		return METER_NOACT;
+	}
+	
+	// Check band type
+	if(ptr_highest_band->type != OFPMBT13_DROP && ptr_highest_band->type != OFPMBT13_DSCP_REMARK)
+	{
+		TRACE("of_helper.c: unsupported band type - not dropping packet");
+		return METER_NOACT;
+	}
+	
+	TRACE("of_helper.c: highest triggered band rate:%d", highest_rate);
+	
+	/* Update band counters */
+	// Find band index
+	int band_index = ((uint8_t*)ptr_highest_band - (uint8_t*)&(meter_entry[meter_index]->bands)) / sizeof(struct ofp13_meter_band_drop);
+	
+	// Update counters
+	band_stats_array[meter_index].band_stats[band_index].byte_band_count += bytes;
+	band_stats_array[meter_index].band_stats[band_index].packet_band_count++;
+
+	if(ptr_highest_band->type == OFPMBT13_DROP)
+	{
+		TRACE("of_helper.c: packet dropped");
+		return METER_DROP;
+	}
+	else if(ptr_highest_band->type == OFPMBT13_DSCP_REMARK)
+	{
+		struct ofp13_meter_band_dscp_remark * ptr_dscp_band = ptr_highest_band;
+		int prec_increase = (int)(ptr_dscp_band->prec_level);
+		
+		TRACE("of_helper.c: DSCP drop precedence needs to be increased by %d", prec_increase);
+		return prec_increase;
+	}
+	
+	TRACE("of_helper.c: ERROR - unknown band type");
+	return METER_NOACT;
+}
+
+/*
+*	Retrieve number of flows bound to the specified meter
+*
+*	@param	id		- meter ID to check
+*
+*	@ret	count	- number of associated flows
+*
+*/
+uint32_t get_bound_flows(uint32_t id)
+{
+	uint32_t count = 0;
+	
+	// Loop through flows
+	for (int i=0;i<iLastFlow;i++)
+	{
+		void *insts[8] = {0};
+		int inst_size = 0;
+		while(inst_size < ofp13_oxm_inst_size[i]){
+			struct ofp13_instruction *inst_ptr = (struct ofp13_instruction *)(ofp13_oxm_inst[i] + inst_size);
+			insts[ntohs(inst_ptr->type)] = inst_ptr;
+			inst_size += ntohs(inst_ptr->len);
+		}
+		
+		// Check if metering instruction is present
+		if(insts[OFPIT13_METER] != NULL)
+		{
+			struct ofp13_instruction_meter *inst_meter = insts[OFPIT13_METER];
+			// Check the found meter id
+			if(ntohl(inst_meter->meter_id) == id)
+			{
+				// The flow's instruction matches the specified meter id
+				count++;	// increment the counter
+			}
+		}
+	}
+	
+	return count;
 }

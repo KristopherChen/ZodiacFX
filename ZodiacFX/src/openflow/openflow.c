@@ -42,14 +42,16 @@
 
 // Global variables
 extern struct zodiac_config Zodiac_Config;
-extern uint8_t port_status[4];
-extern struct ofp10_port_stats phys10_port_stats[4];
-extern struct ofp13_port_stats phys13_port_stats[4];
+extern uint8_t port_status[TOTAL_PORTS];
+extern struct ofp10_port_stats phys10_port_stats[TOTAL_PORTS];
+extern struct ofp13_port_stats phys13_port_stats[TOTAL_PORTS];
 
 // Local Variables
 struct ofp_switch_config Switch_config;
 struct ofp_flow_mod *flow_match10[MAX_FLOWS_10];
 struct ofp13_flow_mod *flow_match13[MAX_FLOWS_13];
+struct group_entry13 group_entry13[MAX_GROUPS];
+struct action_bucket action_bucket[MAX_BUCKETS];
 uint8_t *ofp13_oxm_match[MAX_FLOWS_13];
 uint8_t *ofp13_oxm_inst[MAX_FLOWS_13];
 uint16_t ofp13_oxm_inst_size[MAX_FLOWS_13];
@@ -57,6 +59,9 @@ struct flows_counter flow_counters[MAX_FLOWS_13];
 struct flow_tbl_actions *flow_actions10[MAX_FLOWS_10];
 struct table_counter table_counters[MAX_TABLES];
 int iLastFlow = 0;
+int iLastMeter = 0;
+struct meter_entry13 *meter_entry[MAX_METER_13];
+struct meter_band_stats_array band_stats_array[MAX_METER_13];
 uint8_t shared_buffer[SHARED_BUFFER_LEN];
 char sysbuf[64];
 struct ip_addr serverIP;
@@ -69,6 +74,8 @@ int tcp_wait = 0;
 int totaltime = 0;
 int heartbeat = 0;
 int multi_pos;
+uint32_t reply_more_xid = 0;
+bool reply_more_flag = false;
 bool rcv_freq;
 
 // Internal Functions
@@ -78,6 +85,7 @@ void echo_reply(uint32_t xid);
 err_t TCPready(void *arg, struct tcp_pcb *tpcb, err_t err);
 void tcp_error(void * arg, err_t err);
 static err_t of_receive(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
+static err_t of_sent(void *arg, struct tcp_pcb *tpcb, uint16_t len);
 
 /*
 *	Converts a 64bit value from host to network format
@@ -203,6 +211,24 @@ static err_t of_receive(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t e
 }
 
 /*
+*	OpenFlow Sent callback function
+*
+*	@param *arg - pointer the additional TCP args
+*	@param *tcp_pcb - pointer the TCP session structure.
+*
+*/
+static err_t of_sent(void *arg, struct tcp_pcb *tpcb, uint16_t len)
+{
+	TRACE("openflow.c: [of_sent] %d bytes acknowledged ", len);
+	if(reply_more_flag == true)
+	{
+		multi_flow_more_reply13();
+	}
+	
+	return ERR_OK;
+}
+
+/*
 *	OpenFlow HELLO message function
 *
 */
@@ -223,7 +249,7 @@ void OF_hello(void)
 	ofph.length = HTONS(sizeof(ofph));
 	ofph.xid = HTONL(1);
 	TRACE("openflow.c: Sending HELLO, version 0x%d", ofph.version);
-	sendtcp(&ofph, sizeof(ofph));
+	sendtcp(&ofph, sizeof(ofph), 1);
 	return;
 }
 
@@ -241,7 +267,7 @@ void echo_reply(uint32_t xid)
 	echo.type   = OFPT10_ECHO_REPLY;
 	echo.xid = xid;
 	TRACE("openflow.c: Sent ECHO reply");
-	sendtcp(&echo, sizeof(echo));
+	sendtcp(&echo, sizeof(echo), 1);
 	return;
 }
 
@@ -257,7 +283,7 @@ void echo_request(void)
 	echo.type   = OFPT10_ECHO_REQUEST;
 	echo.xid = 1234;
 	TRACE("openflow.c: Sent ECHO request");
-	sendtcp(&echo, sizeof(echo));
+	sendtcp(&echo, sizeof(echo), 1);
 	return;
 }
 
@@ -268,7 +294,7 @@ void echo_request(void)
 *	@param len - size of the packet to send
 *
 */
-void sendtcp(const void *buffer, u16_t len)
+void sendtcp(const void *buffer, uint16_t len, uint8_t push)
 {
 	err_t err;
 	uint16_t buf_size;
@@ -281,8 +307,17 @@ void sendtcp(const void *buffer, u16_t len)
 	}
 	
 	buf_size = tcp_sndbuf(tcp_pcb);
-	err = tcp_write(tcp_pcb, buffer, len, TCP_WRITE_FLAG_COPY + TCP_WRITE_FLAG_MORE);
-	TRACE("openflow.c: Sending %d bytes to TCP stack, %d available in buffer", len, buf_size);
+	if (push == 0)
+	{
+		TRACE("openflow.c: Sending %d bytes to TCP stack, %d available in buffer", len, buf_size);
+		err = tcp_write(tcp_pcb, buffer, len, TCP_WRITE_FLAG_COPY + TCP_WRITE_FLAG_MORE);
+	
+	} else {
+		TRACE("openflow.c: Sending %d bytes immediately, %d available in buffer", len, buf_size);
+		err = tcp_write(tcp_pcb, buffer, len, TCP_WRITE_FLAG_COPY);
+		tcp_output(tcp_pcb);
+	}
+
 	return;
 }
 
@@ -377,6 +412,7 @@ err_t TCPready(void *arg, struct tcp_pcb *tpcb, err_t err)
 	tcp_recv(tpcb, of_receive);
 	tcp_poll(tpcb, NULL, 4);
 	tcp_err(tpcb, NULL);
+	tcp_sent(tpcb, of_sent);
 	if(Zodiac_Config.failstate == 0) clear_flows();		// Clear the flow if in secure mode
 	TRACE("openflow.c: Connected to controller");
 	OF_hello();

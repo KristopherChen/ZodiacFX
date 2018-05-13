@@ -34,18 +34,20 @@
 #include "flash.h"
 #include "config_zodiac.h"
 #include "openflow/openflow.h"
+#include "trace.h"
+#include "command.h"
+#include "switch.h"
 
 // Global variables
 extern uint8_t shared_buffer[SHARED_BUFFER_LEN];
+struct verification_data verify;
+uint32_t flash_page_addr;
 
 // Static variables
 static uint32_t page_addr;
 //static uint32_t ul_rc;
 
-static	uint32_t flash_page_addr;
 static	uint32_t ul_rc;
-static	uint32_t ul_idx;
-static	uint32_t ul_page_buffer[IFLASH_PAGE_SIZE / sizeof(uint32_t)];
 
 
 /*
@@ -64,7 +66,7 @@ void get_serial(uint32_t *uid_buf)
 */
 int firmware_update_init(void)
 {	
-	flash_page_addr = NEW_FW_BASE;
+	flash_page_addr = FLASH_BUFFER;
 	
 	/* Initialize flash: 6 wait states for flash writing. */
 	ul_rc = flash_init(FLASH_ACCESS_MODE_128, 6);
@@ -89,19 +91,18 @@ int firmware_update_init(void)
 		unlock_address += IFLASH_LOCK_REGION_SIZE;
 	}
 
-	// Erase 192k
+	// Erase 32 pages at a time
 	uint32_t erase_address = flash_page_addr;
-	while(erase_address < IFLASH_ADDR + IFLASH_SIZE - (ERASE_SECTOR_SIZE - 1))
+	while(erase_address < FLASH_BUFFER_END)
 	{
-		//printf("-I- Erasing sector with address: 0x%08x\r\n", erase_address);
-		ul_rc = flash_erase_sector(erase_address);
+		ul_rc = flash_erase_page(erase_address, IFLASH_ERASE_PAGES_32);
 		if (ul_rc != FLASH_RC_OK)
 		{
 			//printf("-F- Flash programming error %lu\n\r", (unsigned long)ul_rc);
 			return 0;
 		}
 		
-		erase_address += ERASE_SECTOR_SIZE;
+		erase_address += ((uint8_t)32*IFLASH_PAGE_SIZE);
 	}
 	
 	return 1;
@@ -113,6 +114,7 @@ int firmware_update_init(void)
 */
 int flash_write_page(uint8_t *flash_page)
 {
+	TRACE("flash.c: writing to 0x%08x", flash_page_addr);
 	if(flash_page_addr <= IFLASH_ADDR + IFLASH_SIZE - IFLASH_PAGE_SIZE)
 	{
 		ul_rc = flash_write(flash_page_addr, flash_page,
@@ -145,11 +147,93 @@ void cli_update(void)
 	{
 		printf("Error: failed to write firmware to memory\r\n");
 	}
-	printf("Firmware upload complete - Restarting the Zodiac FX.\r\n");
-	for(int x = 0;x<100000;x++);	// Let the above message get send to the terminal before detaching
-	udc_detach();	// Detach the USB device before restart
-	rstc_start_software_reset(RSTC);	// Software reset
+	if(verification_check() == SUCCESS)
+	{
+		printf("Firmware upload complete - Restarting the Zodiac FX.\r\n");
+		software_reset();
+	}
+	else
+	{
+		printf("\r\n");
+		printf("Firmware verification check failed\r\n");
+		printf("\r\n");
+	}
+
 	return;
+}
+
+/*
+*	Verify firmware data
+*
+*/
+int verification_check(void)
+{
+	char* fw_end_pmem	= (char*)FLASH_BUFFER_END;	// Buffer pointer to store the last address
+	char* fw_step_pmem  = (char*)FLASH_BUFFER;		// Buffer pointer to the starting address
+	uint32_t crc_sum	= 0;						// Store CRC sum
+	uint8_t	 pad_error	= 0;						// Set when padding is not found
+	
+	/* Add all bytes of the uploaded firmware */
+	// Decrement the pointer until the previous address has data in it (not 0xFF)
+	while(*(fw_end_pmem-1) == '\xFF' && fw_end_pmem > FLASH_BUFFER)
+	{
+		fw_end_pmem--;
+	}
+
+	for(int sig=1; sig<=4; sig++)
+	{
+		if(*(fw_end_pmem-sig) != NULL)
+		{
+			TRACE("signature padding %d not found - last address: %08x", sig, fw_end_pmem);
+			pad_error = 1;
+		}
+		else
+		{
+			TRACE("signature padding %d found", sig);
+		}
+	}
+	
+	// Start summing all bytes
+	if(pad_error)
+	{
+		// Calculate CRC for debug
+		while(fw_step_pmem < fw_end_pmem)
+		{
+			crc_sum += *fw_step_pmem;
+			fw_step_pmem++;
+		}
+	}
+	else
+	{
+		// Exclude CRC & padding from calculation
+		while(fw_step_pmem < (fw_end_pmem-8))
+		{
+			crc_sum += *fw_step_pmem;
+			fw_step_pmem++;
+		}
+	}
+	
+	TRACE("fw_step_pmem %08x; fw_end_pmem %08x;", fw_step_pmem, fw_end_pmem);
+	
+	// Update structure entry
+	TRACE("CRC sum:   %04x", crc_sum);
+	verify.calculated = crc_sum;
+	
+	/* Compare with last 4 bytes of firmware */
+	// Get last 4 bytes of firmware	(4-byte CRC, 4-byte padding)
+	verify.found = *(uint32_t*)(fw_end_pmem - 8);
+	
+	TRACE("CRC found: %04x", verify.found);
+	
+	// Compare calculated and found CRC
+	if(verify.found == verify.calculated)
+	{
+		return SUCCESS;
+	}
+	else
+	{
+		return FAILURE;
+	}
 }
 
 /*
@@ -159,7 +243,8 @@ void cli_update(void)
 int xmodem_xfer(void)
 {
 	char ch;
-	int timeout_clock = 0;
+	int timeout_clock = 0;	// protocol (NAK) timeout counter
+	int timeout_upload = 0;	// upload timeout counter
 	int buff_ctr = 1;
 	int byte_ctr = 1;
 	int block_ctr = 0;
@@ -237,10 +322,15 @@ int xmodem_xfer(void)
 			byte_ctr++;
 		}
 		timeout_clock++;
-		if (timeout_clock > 1000000)	// Timeout, send <NAK>
+		if(timeout_upload > 6)
+		{
+			return;
+		}
+		else if (timeout_clock > 1000000)	// Timeout, send <NAK>
 		{
 			printf("%c", X_NAK);
 			timeout_clock = 0;
+			timeout_upload++;
 		}
 	}
 }
@@ -249,7 +339,7 @@ int xmodem_xfer(void)
 *	Remove XMODEM 0x1A padding at end of data
 *
 */
-xmodem_clear_padding(uint8_t *buff)
+void xmodem_clear_padding(uint8_t *buff)
 {
 	int len = IFLASH_PAGE_SIZE;
 	
@@ -278,4 +368,3 @@ xmodem_clear_padding(uint8_t *buff)
 	
 	return;	// Padding characters removed
 }
-

@@ -57,6 +57,22 @@ void TC0_Handler(void)
 }
 
 /**
+ *	TC1 Interrupt handler.
+ *
+ */
+void TC1_Handler(void)
+{
+	/* Remove warnings. */
+	volatile uint32_t ul_dummy;
+
+	/* Clear status bit to acknowledge interrupt. */
+	ul_dummy = tc_get_status(TC0, 1);
+	UNUSED(ul_dummy);
+
+	/* Send data */
+}
+
+/**
  * Initialize the timer counter (TC0).
  *
  */
@@ -65,24 +81,36 @@ void sys_init_timing(void)
 	uint32_t ul_div;
 	uint32_t ul_tcclks;
 	uint32_t ul_sysclk = sysclk_get_cpu_hz();
+	
+	uint32_t ul_div2;
+	uint32_t ul_tcclks2;
 
 	/* Clear tick value. */
 	gs_ul_clk_tick = 0;
 
 	/* Configure PMC. */
 	pmc_enable_periph_clk(ID_TC0);
+	pmc_enable_periph_clk(ID_TC1);
 
 	/* Configure TC for a 1kHz frequency and therefore a 1ms rate */
 	tc_find_mck_divisor(1000, ul_sysclk, &ul_div, &ul_tcclks, ul_sysclk);
 	tc_init(TC0, 0, ul_tcclks | TC_CMR_CPCTRG);
 	tc_write_rc(TC0, 0, (ul_sysclk / ul_div) / 1000);
+	/* Repeat for channel 1; 10kHz frequency, 100us rate */
+	tc_find_mck_divisor(10000, ul_sysclk, &ul_div2, &ul_tcclks2, ul_sysclk);
+	tc_init(TC0, 1, ul_tcclks2 | TC_CMR_CPCTRG);
+	tc_write_rc(TC0, 1, (ul_sysclk / ul_div2) / 10000);
 
 	/* Configure and enable interrupt on RC compare. */
 	NVIC_EnableIRQ((IRQn_Type)ID_TC0);
 	tc_enable_interrupt(TC0, 0, TC_IER_CPCS);
+	/* Repeat for Channel 1. */
+	NVIC_EnableIRQ((IRQn_Type)ID_TC1);
+	tc_enable_interrupt(TC0, 1, TC_IER_CPCS);
 
-	/* Start timer. */
+	/* Start timers. */
 	tc_start(TC0, 0);
+	tc_start(TC0, 1);
 }
 
 /**

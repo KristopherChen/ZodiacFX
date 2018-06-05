@@ -190,6 +190,18 @@ int main (void)
 		}
 	}
 
+	uint8_t x = 0;
+	uint8_t y = 0;
+	uint8_t z = 0;
+	
+	while(1)
+	{
+		x += 1;
+		x += y;
+		y += z;
+		z += x;
+	}
+
 	while(1)
 	{
 		task_switch(&gs_net_if);

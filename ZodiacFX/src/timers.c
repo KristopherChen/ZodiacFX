@@ -70,6 +70,9 @@ void TC1_Handler(void)
 	UNUSED(ul_dummy);
 
 	/* Send data */
+	volatile uint32_t sp = 0;
+	uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
+	uint32_t return_address = (uint32_t)*pc_ptr;
 }
 
 /**

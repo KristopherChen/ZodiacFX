@@ -69,10 +69,12 @@ void TC1_Handler(void)
 	ul_dummy = tc_get_status(TC0, 1);
 	UNUSED(ul_dummy);
 
-	/* Send data */
+	/* Retrieve return address */
 	volatile uint32_t sp = 0;
 	uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
 	uint32_t return_address = (uint32_t)*pc_ptr;
+	
+	/* Send data */
 }
 
 /**

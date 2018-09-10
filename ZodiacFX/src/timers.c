@@ -33,6 +33,7 @@
 #include "timers.h"
 #include "lwip/init.h"
 #include "lwip/sys.h"
+#include "profiling.h"
 
 /* Clock tick count. */
 static volatile uint32_t gs_ul_clk_tick;
@@ -46,6 +47,7 @@ static volatile uint32_t gs_ul_clk_tick;
  */
 void TC0_Handler(void)
 {
+	printf("-");
 	/* Remove warnings. */
 	volatile uint32_t ul_dummy;
 
@@ -62,6 +64,7 @@ void TC0_Handler(void)
  */
 void TC1_Handler(void)
 {
+	printf(".");
 	/* Remove warnings. */
 	volatile uint32_t ul_dummy;
 
@@ -69,12 +72,13 @@ void TC1_Handler(void)
 	ul_dummy = tc_get_status(TC0, 1);
 	UNUSED(ul_dummy);
 
-	/* Retrieve return address */
-	volatile uint32_t sp = 0;
-	uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
-	uint32_t return_address = (uint32_t)*pc_ptr;
-	
-	/* Send data */
+	///* Retrieve return address */
+	//volatile uint32_t sp = 0;
+	//uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
+	//uint32_t return_address = (uint32_t)*pc_ptr;
+	//
+	///* Send data */
+	//spi_write_address(return_address);
 }
 
 /**

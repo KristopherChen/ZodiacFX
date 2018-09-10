@@ -43,6 +43,7 @@
 #include "eeprom.h"
 #include "switch.h"
 #include "http.h"
+#include "profiling.h"
 #include "flash.h"
 #include "openflow/openflow.h"
 #include "ksz8795clx/ethernet_phy.h"
@@ -165,6 +166,9 @@ int main (void)
 	/* Initialize HTTP server. */
 	http_init();
 	
+	/* Initialise SPI header */
+	spi_profiling_init();
+	
 	// Create port map
 	int v,p;
 	for (v = 0;v < MAX_VLANS;v++)
@@ -192,9 +196,25 @@ int main (void)
 
 	while(1)
 	{
-		task_switch(&gs_net_if);
+		//task_switch(&gs_net_if);
 		task_command(cCommand, cCommand_last);
-		sys_check_timeouts();
-		task_openflow(); 
+		//sys_check_timeouts();
+		//task_openflow(); 
+		//spi_write_test();
+		int x,y,z;
+		x = 100000;
+		y = 99999;
+		z = 8888;
+		while(y > 0)
+		{
+			while(z > 0)
+			{
+				while(x > 0){x--;}
+				int testval = rand();
+				while(testval > 0){testval--;}
+				z--;
+			}
+			y--;
+		}
 	}
 }

@@ -274,13 +274,16 @@
         <InterfaceName>JTAG</InterfaceName>
       </ToolOptions>
       <ToolType>com.atmel.avrdbg.tool.atmelice</ToolType>
-      <ToolNumber>J41800009874</ToolNumber>
+      <ToolNumber>J41800058832</ToolNumber>
       <ToolName>Atmel-ICE</ToolName>
     </com_atmel_avrdbg_tool_atmelice>
-    <avrtoolinterface>JTAG</avrtoolinterface>
-    <avrtoolserialnumber>J41800009874</avrtoolserialnumber>
+    <avrtoolinterface>
+    </avrtoolinterface>
+    <avrtoolserialnumber>J41800058832</avrtoolserialnumber>
     <avrdeviceexpectedsignature>0xA3CC0CE0</avrdeviceexpectedsignature>
     <avrtoolinterfaceclock>7500000</avrtoolinterfaceclock>
+    <ResetRule>0</ResetRule>
+    <EraseKey />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
@@ -718,6 +721,12 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\openflow\openflow_13.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\profiling.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\profiling.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\trace.h">

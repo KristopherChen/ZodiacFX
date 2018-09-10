@@ -21,7 +21,8 @@
 /* Clock phase. */
 #define SPI_CLK_PHASE 1
 
-static uint8_t testbuffer[16] = {0xAA, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};;
+static uint8_t testbuffer[16] = {0xAA, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}; // REMOVE THIS
+uint8_t ringbuffer[RING_BUFFER_SIZE];
 
 /*
 *	Initialize the SPI interface as a SLAVE
@@ -57,11 +58,24 @@ void spi_profiling_init(void)
 */
 void spi_write_test(void)
 {
-	for (uint8_t i = 0; i < 16; i++)
+	// Write walking pattern to ring buffer
+	for (uint16_t i = 0; i < RING_BUFFER_SIZE; i++)
 	{
-		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		spi_write(SPI_MASTER_BASE, testbuffer[i], 0, 0);
+		ringbuffer[i] = i;
 	}
+	
+	// Write starting & closing boundaries
+	for (uint8_t i = 0; i < 6; i++)
+	{
+		ringbuffer[i] = 0xDD;
+		ringbuffer[511-i] = 0xEE;
+	}
+	
+	//for (uint8_t i = 0; i < 16; i++)
+	//{
+		////while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		//spi_write(SPI_MASTER_BASE, testbuffer[i], 0, 0);
+	//}
 	
 	return;
 }

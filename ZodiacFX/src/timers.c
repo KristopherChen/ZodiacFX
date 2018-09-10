@@ -47,7 +47,7 @@ static volatile uint32_t gs_ul_clk_tick;
  */
 void TC0_Handler(void)
 {
-	printf("-");
+	//printf("-");
 	/* Remove warnings. */
 	volatile uint32_t ul_dummy;
 
@@ -64,7 +64,7 @@ void TC0_Handler(void)
  */
 void TC1_Handler(void)
 {
-	printf(".");
+	//printf(".");
 	/* Remove warnings. */
 	volatile uint32_t ul_dummy;
 

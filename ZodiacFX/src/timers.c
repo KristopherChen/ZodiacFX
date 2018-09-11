@@ -39,8 +39,11 @@
 static volatile uint32_t gs_ul_clk_tick;
 
 /* Profiling externs */
-extern uint8_t addressbuffer[ADDRESS_BUFFER_SIZE];
-extern uint16_t addressbuffer_count;
+extern uint8_t addressbuffer0[ADDRESS_BUFFER_SIZE];
+extern uint16_t addressbuffer0_count;
+extern uint8_t addressbuffer1[ADDRESS_BUFFER_SIZE];
+extern uint16_t addressbuffer1_count;
+extern uint8_t addressbuffer_switch;
 /* temp debug variables */
 uint32_t opti_debug_ct=0;
 
@@ -84,22 +87,45 @@ void TC1_Handler(void)
 	uint32_t return_address = (uint32_t)*pc_ptr;
 
 	/* Write to buffer */
-	if(addressbuffer_count+3 < ADDRESS_BUFFER_SIZE-8)
+	if(addressbuffer_switch == 0)
 	{
-		// Write each byte to buffer (preserve endianness)
-		addressbuffer[addressbuffer_count+0] = (return_address >> 24) & 0xFF;
-		addressbuffer[addressbuffer_count+1] = (return_address >> 16) & 0xFF;
-		addressbuffer[addressbuffer_count+2] = (return_address >> 8) & 0xFF;
-		addressbuffer[addressbuffer_count+3] = return_address & 0xFF;
-		
-		// Increment address buffer
-		addressbuffer_count += 4;
+		if(addressbuffer0_count+3 < ADDRESS_BUFFER_SIZE-8)
+		{
+			// Write each byte to buffer (preserve endianness)
+			addressbuffer0[addressbuffer0_count+0] = (return_address >> 24) & 0xFF;
+			addressbuffer0[addressbuffer0_count+1] = (return_address >> 16) & 0xFF;
+			addressbuffer0[addressbuffer0_count+2] = (return_address >> 8) & 0xFF;
+			addressbuffer0[addressbuffer0_count+3] = return_address & 0xFF;
+				
+			// Increment address buffer
+			addressbuffer0_count += 4;
+		}
+		else
+		{
+			// Shouldn't occur
+			opti_debug_ct++;
+		}
 	}
 	else
 	{
-		// Shouldn't occur
-		opti_debug_ct++;
+		if(addressbuffer1_count+3 < ADDRESS_BUFFER_SIZE-8)
+		{
+			// Write each byte to buffer (preserve endianness)
+			addressbuffer1[addressbuffer1_count+0] = (return_address >> 24) & 0xFF;
+			addressbuffer1[addressbuffer1_count+1] = (return_address >> 16) & 0xFF;
+			addressbuffer1[addressbuffer1_count+2] = (return_address >> 8) & 0xFF;
+			addressbuffer1[addressbuffer1_count+3] = return_address & 0xFF;
+				
+			// Increment address buffer
+			addressbuffer1_count += 4;
+		}
+		else
+		{
+			// Shouldn't occur
+			opti_debug_ct++;
+		}
 	}
+
 }
 
 /**

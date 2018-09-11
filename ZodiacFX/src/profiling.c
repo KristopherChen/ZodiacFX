@@ -59,23 +59,23 @@ void spi_profiling_init(void)
 void spi_write_test(void)
 {
 	// Write walking pattern to ring buffer
-	for (uint16_t i = 0; i < RING_BUFFER_SIZE; i++)
+	for (uint16_t i = 0; i < RING_BUFFER_SIZE-8; i++)
 	{
-		ringbuffer[i] = i;
+		ringbuffer[i+8] = i;
 	}
 	
 	// Write starting & closing boundaries
-	for (uint8_t i = 0; i < 6; i++)
+	for (uint8_t i = 0; i < 8; i++)
 	{
 		ringbuffer[i] = 0xDD;
-		ringbuffer[511-i] = 0xEE;
+		ringbuffer[RING_BUFFER_SIZE-1-i] = 0xEE;
 	}
 	
-	//for (uint8_t i = 0; i < 16; i++)
-	//{
-		////while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		//spi_write(SPI_MASTER_BASE, testbuffer[i], 0, 0);
-	//}
+	for (uint16_t i = 0; i < RING_BUFFER_SIZE; i++)
+	{
+		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		spi_write(SPI_MASTER_BASE, ringbuffer[i], 0, 0);
+	}
 	
 	return;
 }

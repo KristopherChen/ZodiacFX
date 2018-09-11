@@ -483,6 +483,7 @@ void switch_init(void)
 */
 void task_switch(struct netif *netif)
 {
+	// REMOVE THIS TESTVAR
 	static testvar = 0;
 				if(sys_get_ms()%1000==0)
 				{

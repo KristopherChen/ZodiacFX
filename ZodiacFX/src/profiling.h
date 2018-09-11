@@ -22,7 +22,7 @@
 #define SPI_SEND_WAIT		0
 #define SPI_HEADER_SIZE	13
 
-#define RING_BUFFER_SIZE	512
+#define RING_BUFFER_SIZE	512+16	// size + boundary padding
 
 void spi_profiling_init(void);
 void spi_write_test(void);

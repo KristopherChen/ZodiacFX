@@ -201,20 +201,5 @@ int main (void)
 		//sys_check_timeouts();
 		//task_openflow(); 
 		spi_write_test();
-		//int x,y,z;
-		//x = 100000;
-		//y = 99999;
-		//z = 8888;
-		//while(y > 0)
-		//{
-			//while(z > 0)
-			//{
-				//while(x > 0){x--;}
-				//int testval = rand();
-				//while(testval > 0){testval--;}
-				//z--;
-			//}
-			//y--;
-		//}
 	}
 }

@@ -196,10 +196,10 @@ int main (void)
 
 	while(1)
 	{
-		//task_switch(&gs_net_if);
+		task_switch(&gs_net_if);
 		task_command(cCommand, cCommand_last);
-		//sys_check_timeouts();
-		//task_openflow(); 
-		spi_write_test();
+		sys_check_timeouts();
+		task_openflow();
+		task_offload();
 	}
 }

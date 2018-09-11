@@ -38,6 +38,12 @@
 /* Clock tick count. */
 static volatile uint32_t gs_ul_clk_tick;
 
+/* Profiling externs */
+extern uint8_t addressbuffer[ADDRESS_BUFFER_SIZE];
+extern uint16_t addressbuffer_count;
+/* temp debug variables */
+uint32_t opti_debug_ct=0;
+
 #include "pmc.h"
 #include "sysclk.h"
 
@@ -72,13 +78,28 @@ void TC1_Handler(void)
 	ul_dummy = tc_get_status(TC0, 1);
 	UNUSED(ul_dummy);
 
-	///* Retrieve return address */
-	//volatile uint32_t sp = 0;
-	//uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
-	//uint32_t return_address = (uint32_t)*pc_ptr;
-	//
-	///* Send data */
-	//spi_write_address(return_address);
+	/* Retrieve return address */
+	volatile uint32_t sp = 0;
+	uint32_t *pc_ptr = (uint32_t*)((uint32_t)&sp + 8 + 40);
+	uint32_t return_address = (uint32_t)*pc_ptr;
+
+	/* Write to buffer */
+	if(addressbuffer_count+3 < ADDRESS_BUFFER_SIZE-8)
+	{
+		// Write each byte to buffer (preserve endianness)
+		addressbuffer[addressbuffer_count+0] = (return_address >> 24) & 0xFF;
+		addressbuffer[addressbuffer_count+1] = (return_address >> 16) & 0xFF;
+		addressbuffer[addressbuffer_count+2] = (return_address >> 8) & 0xFF;
+		addressbuffer[addressbuffer_count+3] = return_address & 0xFF;
+		
+		// Increment address buffer
+		addressbuffer_count += 4;
+	}
+	else
+	{
+		// Shouldn't occur
+		opti_debug_ct++;
+	}
 }
 
 /**

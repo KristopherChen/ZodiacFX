@@ -483,20 +483,6 @@ void switch_init(void)
 */
 void task_switch(struct netif *netif)
 {
-	// REMOVE THIS TESTVAR
-	static testvar = 0;
-				if(sys_get_ms()%1000==0)
-				{
-					if(testvar == 0)
-					{
-						TRACE("1s");
-						testvar = 1;	
-					}
-				}
-				else
-				{
-					testvar = 0;
-				}
 	uint32_t ul_rcv_size = 0;
 
 	/* Main packet processing loop */

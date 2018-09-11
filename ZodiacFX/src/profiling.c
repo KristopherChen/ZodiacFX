@@ -22,7 +22,8 @@
 #define SPI_CLK_PHASE 1
 
 static uint8_t testbuffer[16] = {0xAA, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}; // REMOVE THIS
-uint8_t ringbuffer[RING_BUFFER_SIZE];
+uint8_t addressbuffer[ADDRESS_BUFFER_SIZE];
+uint16_t addressbuffer_count = 8;
 
 /*
 *	Initialize the SPI interface as a SLAVE
@@ -58,56 +59,82 @@ void spi_profiling_init(void)
 */
 void spi_write_test(void)
 {
-	// Write walking pattern to ring buffer
-	for (uint16_t i = 0; i < RING_BUFFER_SIZE-8; i++)
+	// Write walking pattern to buffer
+	for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE-8; i++)
 	{
-		ringbuffer[i+8] = i;
+		addressbuffer[i+8] = i;
 	}
 	
 	// Write starting & closing boundaries
 	for (uint8_t i = 0; i < 8; i++)
 	{
-		ringbuffer[i] = 0xDD;
-		ringbuffer[RING_BUFFER_SIZE-1-i] = 0xEE;
+		addressbuffer[i] = 0xDD;
+		addressbuffer[ADDRESS_BUFFER_SIZE-1-i] = 0xEE;
 	}
 	
-	for (uint16_t i = 0; i < RING_BUFFER_SIZE; i++)
+	for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE; i++)
 	{
 		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		spi_write(SPI_MASTER_BASE, ringbuffer[i], 0, 0);
+		spi_write(SPI_MASTER_BASE, addressbuffer[i], 0, 0);
 	}
 	
 	return;
 }
 
 /*
-*	Send address test data
+*	Send address data
 *
 */
-void spi_write_address(uint32_t addr)
+void task_offload(void)
 {
-	uint8_t boundary[2] = {0xDE, 0xAD};
-	// Send start boundary
-	for (uint8_t i = 0; i < 2; i++)
-	{
-		spi_write(SPI_MASTER_BASE, boundary[i], 0, 0);
-	}
-	
-	// Send address
-	uint8_t * addr_byte = (&addr);
-	addr_byte+=3;
-	spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
-	spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
-	spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
-	spi_write(SPI_MASTER_BASE, *addr_byte, 0, 0);
-	
-	boundary[0] = 0xBE;
-	boundary[1] = 0xEF;
-	// Send start boundary
-	for (uint8_t i = 0; i < 2; i++)
-	{
-		spi_write(SPI_MASTER_BASE, boundary[i], 0, 0);
+	if(addressbuffer_count >= ADDRESS_BUFFER_SIZE-8)
+	{	
+		// Write starting & closing boundaries
+		for (uint8_t i = 0; i < 8; i++)
+		{
+			addressbuffer[i] = 0xDD;
+			addressbuffer[ADDRESS_BUFFER_SIZE-1-i] = 0xEE;
+		}
+		
+		for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE; i++)
+		{
+			//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+			spi_write(SPI_MASTER_BASE, addressbuffer[i], 0, 0);
+		}
+		
+		// Reset local SPI buffer
+		spi_write(SPI_MASTER_BASE, 0xFF, 0, 0);
+		
+		addressbuffer_count = 8;
 	}
 	
 	return;
 }
+
+//void spi_write_address(uint32_t addr)
+//{
+	//uint8_t boundary[2] = {0xDE, 0xAD};
+	//// Send start boundary
+	//for (uint8_t i = 0; i < 2; i++)
+	//{
+		//spi_write(SPI_MASTER_BASE, boundary[i], 0, 0);
+	//}
+	//
+	//// Send address
+	//uint8_t * addr_byte = (&addr);
+	//addr_byte+=3;
+	//spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
+	//spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
+	//spi_write(SPI_MASTER_BASE, *addr_byte--, 0, 0);
+	//spi_write(SPI_MASTER_BASE, *addr_byte, 0, 0);
+	//
+	//boundary[0] = 0xBE;
+	//boundary[1] = 0xEF;
+	//// Send start boundary
+	//for (uint8_t i = 0; i < 2; i++)
+	//{
+		//spi_write(SPI_MASTER_BASE, boundary[i], 0, 0);
+	//}
+	//
+	//return;
+//}

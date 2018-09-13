@@ -74,29 +74,33 @@ void spi_profiling_init(void)
 *	Send dummy test data
 *
 */
-//void spi_write_test(void)
-//{
-	//// Write walking pattern to buffer
-	//for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE-8; i++)
-	//{
-		//addressbuffer0[i+8] = i;
-	//}
-	//
-	//// Write starting & closing boundaries
-	//for (uint8_t i = 0; i < 8; i++)
-	//{
-		//addressbuffer0[i] = 0xDD;
-		//addressbuffer0[ADDRESS_BUFFER_SIZE-1-i] = 0xEE;
-	//}
-	//
-	//for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE; i++)
-	//{
-		////while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
-		//spi_write(SPI_MASTER_BASE, addressbuffer0[i], 0, 0);
-	//}
-	//
-	//return;
-//}
+void spi_write_test(void)
+{
+	// Write walking pattern to buffer
+	for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE-8; i++)
+	{
+		addressbuffer0[i+8] = i;
+	}
+	
+	// Write starting & closing boundaries
+	for (uint8_t i = 0; i < 8; i++)
+	{
+		addressbuffer0[i] = 0xDD;
+		addressbuffer0[ADDRESS_BUFFER_SIZE-1-i] = 0xEE;
+	}
+	
+	uint32_t debug_timer = sys_get_ms();
+	
+	for (uint16_t i = 0; i < ADDRESS_BUFFER_SIZE; i++)
+	{
+		//while ((spi_read_status(SPI_MASTER_BASE) & SPI_SR_RDRF) == 0);
+		spi_write(SPI_MASTER_BASE, addressbuffer0[i], 0, 0);
+	}
+	
+	uint32_t debug_timer_2 = sys_get_ms()-debug_timer;
+	
+	return;
+}
 
 
 /*

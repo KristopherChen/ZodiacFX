@@ -73,7 +73,7 @@ void TC0_Handler(void)
  */
 void TC1_Handler(void)
 {
-	//printf(".");
+	////printf(".");
 	/* Remove warnings. */
 	volatile uint32_t ul_dummy;
 
@@ -153,9 +153,10 @@ void sys_init_timing(void)
 	tc_init(TC0, 0, ul_tcclks | TC_CMR_CPCTRG);
 	tc_write_rc(TC0, 0, (ul_sysclk / ul_div) / 1000);
 	/* Repeat for channel 1; 10kHz frequency, 100us rate */
-	tc_find_mck_divisor(10000, ul_sysclk, &ul_div2, &ul_tcclks2, ul_sysclk);
+		// Temporarily changed from 10000 -> 1000 for testing
+	tc_find_mck_divisor(1000, ul_sysclk, &ul_div2, &ul_tcclks2, ul_sysclk);
 	tc_init(TC0, 1, ul_tcclks2 | TC_CMR_CPCTRG);
-	tc_write_rc(TC0, 1, (ul_sysclk / ul_div2) / 10000);
+	tc_write_rc(TC0, 1, (ul_sysclk / ul_div2) / 1000);
 
 	/* Configure and enable interrupt on RC compare. */
 	NVIC_EnableIRQ((IRQn_Type)ID_TC0);

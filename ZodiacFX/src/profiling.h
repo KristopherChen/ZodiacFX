@@ -22,7 +22,7 @@
 #define SPI_SEND_WAIT		0
 #define SPI_HEADER_SIZE	13
 
-#define ADDRESS_BUFFER_SIZE	512+16	// size + boundary padding
+#define ADDRESS_BUFFER_SIZE	72+16	// size + boundary padding (NOTE: needs to be a multiple of 4 to fit addresses)
 
 void spi_profiling_init(void);
 void spi_write_test(void);

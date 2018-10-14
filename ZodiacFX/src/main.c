@@ -200,7 +200,7 @@ int main (void)
 		task_command(cCommand, cCommand_last);
 		sys_check_timeouts();
 		task_openflow();
-		//task_offload();
-		spi_write_test();
+		task_offload();
+		//spi_write_test();
 	}
 }
